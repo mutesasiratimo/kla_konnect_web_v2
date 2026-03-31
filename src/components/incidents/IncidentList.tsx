@@ -1,0 +1,430 @@
+import React, { useState } from 'react'
+import type {
+  IncidentDetailRead,
+  IncidentRead,
+  IncidentWorkflowStatus,
+} from '../../api/types'
+import { incidents as incidentsApi, uploads } from '../../api/endpoints'
+import { DashboardDialog } from '../DashboardDialog'
+import { PendingMediaDropzone, uploadKindForFile } from '../FileUploadDropzone'
+
+interface ListProps {
+  data: IncidentRead[]
+  categoryOptions: { id: string; name: string }[]
+  onRefresh: () => void
+  showCreateButton?: boolean
+  createAsCityAlert?: boolean
+}
+
+function statusLabel(status: IncidentWorkflowStatus): string {
+  switch (status) {
+    case '0':
+      return 'Archived'
+    case '1':
+      return 'Pending'
+    case '2':
+      return 'Resolved'
+    case '3':
+      return 'Rejected'
+    default:
+      return status
+  }
+}
+
+function statusBadgeClass(status: IncidentWorkflowStatus): string {
+  if (status === '2') return 'status-badge--success'
+  if (status === '3') return 'status-badge--danger'
+  if (status === '0') return ''
+  return 'status-badge--warning'
+}
+
+export const IncidentList: React.FC<ListProps> = ({
+  data,
+  categoryOptions,
+  onRefresh,
+  showCreateButton = true,
+  createAsCityAlert = false,
+}) => {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newCategoryId, setNewCategoryId] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [newEmergency, setNewEmergency] = useState(false)
+  const [newAddress, setNewAddress] = useState('')
+  const [editTarget, setEditTarget] = useState<IncidentRead | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editCategoryId, setEditCategoryId] = useState('')
+  const [pendingAttachments, setPendingAttachments] = useState<File[]>([])
+  const [viewOpen, setViewOpen] = useState(false)
+  const [viewLoading, setViewLoading] = useState(false)
+  const [viewData, setViewData] = useState<IncidentDetailRead | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const closeCreate = () => {
+    setCreateOpen(false)
+    setNewName('')
+    setNewDescription('')
+    setNewEmergency(false)
+    setNewAddress('')
+    setNewCategoryId(categoryOptions[0]?.id ?? '')
+    setPendingAttachments([])
+  }
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newName.trim() || !newCategoryId) return
+    setSaving(true)
+    try {
+      const created = await incidentsApi.register({
+        name: newName.trim(),
+        incident_category_id: newCategoryId,
+        description: newDescription.trim() || null,
+        isemergency: newEmergency,
+        iscityreport: createAsCityAlert,
+        address: newAddress.trim() || null,
+      })
+      for (let i = 0; i < pendingAttachments.length; i++) {
+        const file = pendingAttachments[i]
+        const up = await uploads.file(file, uploadKindForFile(file))
+        await incidentsApi.addAttachment(created.id, {
+          url: up.url,
+          attachment_type: up.file_type,
+          mime_type: up.mime_type ?? null,
+          sort_order: i,
+        })
+      }
+      closeCreate()
+      await onRefresh()
+    } catch (err) {
+      console.error(err)
+      window.alert('Could not register incident or upload attachments.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openEdit = (row: IncidentRead) => {
+    setEditTarget(row)
+    setEditName(row.name)
+    setEditDescription(row.description ?? '')
+    setEditCategoryId(row.incident_category_id)
+  }
+
+  const closeEdit = () => {
+    setEditTarget(null)
+  }
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editTarget || !editName.trim() || !editCategoryId) return
+    setSaving(true)
+    try {
+      await incidentsApi.update(editTarget.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || null,
+        incident_category_id: editCategoryId,
+      })
+      closeEdit()
+      await onRefresh()
+    } catch (err) {
+      console.error(err)
+      window.alert('Could not update incident.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleView = async (id: string) => {
+    setViewOpen(true)
+    setViewLoading(true)
+    try {
+      const detail = await incidentsApi.get(id)
+      setViewData(detail)
+    } catch (error) {
+      console.error(error)
+      window.alert('Could not load incident details.')
+      setViewOpen(false)
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
+  const handleArchive = async (id: string) => {
+    if (!window.confirm('Archive this incident?')) return
+    try {
+      // Soft delete = archive in this workflow.
+      await incidentsApi.delete(id, false)
+      await onRefresh()
+    } catch (error) {
+      console.error(error)
+      window.alert('Could not archive incident.')
+    }
+  }
+
+  return (
+    <div style={{ marginTop: '1.5rem' }}>
+      {showCreateButton && (
+        <div className="dashboard-page-header-row" style={{ marginBottom: '1rem' }}>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => {
+              setNewCategoryId(categoryOptions[0]?.id ?? '')
+              setCreateOpen(true)
+            }}
+          >
+            {createAsCityAlert ? '+ Create city alert' : '+ New incident'}
+          </button>
+        </div>
+      )}
+
+      <DashboardDialog
+        open={createOpen}
+        onClose={closeCreate}
+        title={createAsCityAlert ? 'Create city alert' : 'Register incident'}
+        titleId="incident-create-title"
+        wide
+      >
+        <form className="dashboard-dialog-form" onSubmit={handleCreate}>
+          <label className="dashboard-dialog-field">
+            <span>Title *</span>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+              autoComplete="off"
+            />
+          </label>
+          <label className="dashboard-dialog-field">
+            <span>Category *</span>
+            <select
+              className="dashboard-dialog-select"
+              value={newCategoryId}
+              onChange={(e) => setNewCategoryId(e.target.value)}
+              required
+            >
+              <option value="">Select category</option>
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="dashboard-dialog-field">
+            <span>Description</span>
+            <textarea
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+            />
+          </label>
+          <label className="dashboard-dialog-field">
+            <span>Address</span>
+            <input
+              value={newAddress}
+              onChange={(e) => setNewAddress(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dashboard-dialog-field" style={{ flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
+            <input
+              type="checkbox"
+              checked={newEmergency}
+              onChange={(e) => setNewEmergency(e.target.checked)}
+            />
+            <span style={{ margin: 0 }}>Emergency</span>
+          </label>
+          <PendingMediaDropzone
+            label="Attachments (optional)"
+            files={pendingAttachments}
+            onFilesChange={setPendingAttachments}
+            disabled={saving}
+          />
+          <div className="dashboard-dialog-actions">
+            <button type="button" className="secondary-button" onClick={closeCreate}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-button" disabled={saving}>
+              Submit
+            </button>
+          </div>
+        </form>
+      </DashboardDialog>
+
+      <DashboardDialog
+        open={editTarget !== null}
+        onClose={closeEdit}
+        title="Edit incident"
+        titleId="incident-edit-title"
+        wide
+      >
+        <form className="dashboard-dialog-form" onSubmit={handleUpdate}>
+          <label className="dashboard-dialog-field">
+            <span>Title *</span>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              required
+              autoComplete="off"
+            />
+          </label>
+          <label className="dashboard-dialog-field">
+            <span>Category *</span>
+            <select
+              className="dashboard-dialog-select"
+              value={editCategoryId}
+              onChange={(e) => setEditCategoryId(e.target.value)}
+              required
+            >
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="dashboard-dialog-field">
+            <span>Description</span>
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+            />
+          </label>
+          <div className="dashboard-dialog-actions">
+            <button type="button" className="secondary-button" onClick={closeEdit}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-button" disabled={saving}>
+              Save
+            </button>
+          </div>
+        </form>
+      </DashboardDialog>
+
+      <DashboardDialog
+        open={viewOpen}
+        onClose={() => setViewOpen(false)}
+        title="Incident details"
+        titleId="incident-view-title"
+        wide
+      >
+        <div className="dashboard-dialog-body" style={{ whiteSpace: 'pre-wrap' }}>
+          {viewLoading && <p>Loading details...</p>}
+          {!viewLoading && viewData && (
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              <p>
+                <strong>Title:</strong> {viewData.name}
+              </p>
+              <p>
+                <strong>Status:</strong> {statusLabel(viewData.status)}
+              </p>
+              <p>
+                <strong>Address:</strong> {viewData.address || 'Not specified'}
+              </p>
+              <p>
+                <strong>Description:</strong> {viewData.description || '—'}
+              </p>
+              <p>
+                <strong>Created:</strong>{' '}
+                {new Date(viewData.datecreated).toLocaleString()}
+              </p>
+              <p>
+                <strong>Category ID:</strong> {viewData.incident_category_id}
+              </p>
+              <p>
+                <strong>Attachments:</strong> {viewData.attachments.length}
+              </p>
+            </div>
+          )}
+        </div>
+      </DashboardDialog>
+
+      <div className="dashboard-table-shell">
+        <table className="dashboard-table">
+          <thead>
+            <tr>
+              <th>Incident</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Reported</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((item) => (
+              <tr key={item.id}>
+                <td>
+                  <div style={{ fontWeight: 600 }}>{item.name}</div>
+                  {item.isemergency && (
+                    <span className="status-badge status-badge--danger">Emergency</span>
+                  )}
+                </td>
+                <td>{item.address || 'Not specified'}</td>
+                <td>
+                  <span className={`status-badge ${statusBadgeClass(item.status)}`}>
+                    {statusLabel(item.status)}
+                  </span>
+                </td>
+                <td>{new Date(item.datecreated).toLocaleString()}</td>
+                <td>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '0.35rem',
+                      flexWrap: 'nowrap',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ width: 30, height: 30, padding: 0 }}
+                      title="View"
+                      aria-label="View incident"
+                      onClick={() => handleView(item.id)}
+                    >
+                      <i className="fa fa-eye" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ width: 30, height: 30, padding: 0 }}
+                      title="Edit"
+                      aria-label="Edit incident"
+                      onClick={() => openEdit(item)}
+                    >
+                      <i className="fa fa-pencil" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{
+                        width: 30,
+                        height: 30,
+                        padding: 0,
+                        color: '#ef4444',
+                      }}
+                      title="Archive"
+                      aria-label="Archive incident"
+                      onClick={() => handleArchive(item.id)}
+                    >
+                      <i className="fa fa-archive" aria-hidden="true" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.length === 0 && (
+          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
+            {showCreateButton
+              ? 'No records yet. Create one to get started.'
+              : 'No incidents found for the selected filters.'}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
