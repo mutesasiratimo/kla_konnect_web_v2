@@ -5,6 +5,7 @@ import type {
   IncidentWorkflowStatus,
 } from '../../api/types'
 import { incidents as incidentsApi, uploads } from '../../api/endpoints'
+import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
 import { DashboardDialog } from '../DashboardDialog'
 import { PendingMediaDropzone, uploadKindForFile } from '../FileUploadDropzone'
 import { DataTablePagination } from '../table/DataTablePagination'
@@ -107,7 +108,7 @@ export const IncidentList: React.FC<ListProps> = ({
 
   useEffect(() => {
     if (!createAsCityAlert) return
-    const key = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim()
+    const key = GOOGLE_MAPS_API_KEY.trim()
     if (!key) return
 
     const w = window as any

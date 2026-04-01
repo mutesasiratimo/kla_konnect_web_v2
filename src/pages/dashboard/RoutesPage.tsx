@@ -3,6 +3,7 @@ import { routeCharts } from '../../api/endpoints'
 import type { RevenueSubcategoryRead, RouteChartCreate, RouteChartRead } from '../../api/types'
 import { DataTablePagination } from '../../components/table/DataTablePagination'
 import { DashboardDialog } from '../../components/DashboardDialog'
+import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
 
 interface RoutesPageProps {
   routeChartsData: RouteChartRead[]
@@ -95,7 +96,7 @@ export function RoutesPage({
   }, [filterText, routeChartsData.length])
 
   useEffect(() => {
-    const key = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim()
+    const key = GOOGLE_MAPS_API_KEY.trim()
     if (!key) return
 
     const w = window as any

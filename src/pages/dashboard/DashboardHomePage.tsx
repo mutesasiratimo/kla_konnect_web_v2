@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { IncidentCategoryRead, IncidentRead } from '../../api/types'
+import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
 
 interface DashboardHomePageProps {
   pendingIncidentsCount: number
@@ -98,7 +99,7 @@ export function DashboardHomePage({
     'Monthly',
   )
   const [activeDonutIndex, setActiveDonutIndex] = useState(0)
-  const googleMapsKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim()
+  const googleMapsKey = GOOGLE_MAPS_API_KEY.trim()
   const mapRef = useRef<HTMLDivElement | null>(null)
   const categoryImageById = useMemo(
     () => Object.fromEntries(incidentCategories.map((category) => [category.id, category.image ?? null])),
@@ -475,7 +476,7 @@ export function DashboardHomePage({
                 />
               ) : (
                 <div className="dashboard-v2-map-fallback">
-                  <p>Set VITE_GOOGLE_MAPS_API_KEY to load Google Maps.</p>
+                  <p>Configure Google Maps API key to load map.</p>
                 </div>
               )}
             </div>
