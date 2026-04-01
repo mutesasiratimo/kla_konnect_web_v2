@@ -3,6 +3,9 @@ import type {
   StageCreate,
   StageRead,
   StageUpdate,
+  RouteChartCreate,
+  RouteChartRead,
+  RouteChartUpdate,
   UserCreate,
   UserRead,
   UserUpdate,
@@ -13,6 +16,8 @@ import type {
   RevenueCategoryRead,
   RevenueCategoryUpdate,
   RevenueSubscriptionRead,
+  RevenueSubscriptionCreate,
+  RevenueSubscriptionUpdate,
   RevenueStreamRead,
   RevenueStreamCreate,
   RevenueStreamUpdate,
@@ -38,6 +43,7 @@ import type {
   NewsArticleCreate,
   NewsArticleRead,
   NewsArticleUpdate,
+  PaginatedResponse,
 } from './types'
 
 const base = '/api/v2'
@@ -54,26 +60,55 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify(body),
     })
+    const permissionsObject: Record<string, boolean> | null = (() => {
+      const source = res.permissions ?? res.role?.permissions ?? null
+      if (!source) return null
+      if (Array.isArray(source)) {
+        return Object.fromEntries(source.map((perm) => [perm, true]))
+      }
+      return source
+    })()
     if (res?.access_token && res?.refresh_token && res?.user) {
       setSession({
         access_token: res.access_token,
         refresh_token: res.refresh_token,
         user: res.user,
         role: res.role ?? null,
-        permissions: res.permissions ?? null,
+        permissions: permissionsObject,
       })
     }
+    res.permissions = permissionsObject ?? null
     return res
   },
 
   logout(): void {
     clearToken()
   },
+
+  forgotPassword(email: string): Promise<Record<string, unknown>> {
+    return apiRequest<Record<string, unknown>>(`${base}/users/forgot-password`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  },
+
+  resetPassword(body: {
+    email: string
+    code: string
+    new_password: string
+  }): Promise<Record<string, unknown>> {
+    return apiRequest<Record<string, unknown>>(`${base}/users/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
 }
 
 export const stages = {
   list(): Promise<StageRead[]> {
-    return apiRequest<StageRead[]>(`${base}/stages`)
+    return apiRequest<PaginatedResponse<StageRead>>(`${base}/stages/paginated`, {
+      params: { page: '1', size: '200' },
+    }).then((res) => res.items)
   },
 
   search(q: string, limit = 20): Promise<StageRead[]> {
@@ -108,7 +143,9 @@ export const stages = {
 
 export const users = {
   list(): Promise<UserRead[]> {
-    return apiRequest<UserRead[]>(`${base}/users`)
+    return apiRequest<PaginatedResponse<UserRead>>(`${base}/users/paginated`, {
+      params: { page: '1', size: '200' },
+    }).then((res) => res.items)
   },
 
   search(params: {
@@ -152,7 +189,12 @@ export const roles = {
 
 export const revenueCategories = {
   list(): Promise<RevenueCategoryRead[]> {
-    return apiRequest<RevenueCategoryRead[]>(`${base}/revenue/categories`)
+    return apiRequest<PaginatedResponse<RevenueCategoryRead>>(
+      `${base}/revenue/categories/paginated`,
+      {
+        params: { page: '1', size: '200' },
+      },
+    ).then((res) => res.items)
   },
 
   get(id: string): Promise<RevenueCategoryRead> {
@@ -185,9 +227,16 @@ export const revenueSubcategories = {
   list(categoryId?: string | null): Promise<RevenueSubcategoryRead[]> {
     const params: Record<string, string> = {}
     if (categoryId) params.category_id = categoryId
-    return apiRequest<RevenueSubcategoryRead[]>(`${base}/revenue/subcategories`, {
-      params: Object.keys(params).length ? params : undefined,
-    })
+    return apiRequest<PaginatedResponse<RevenueSubcategoryRead>>(
+      `${base}/revenue/subcategories/paginated`,
+      {
+        params: {
+          page: '1',
+          size: '200',
+          ...params,
+        },
+      },
+    ).then((res) => res.items)
   },
 
   get(id: string): Promise<RevenueSubcategoryRead> {
@@ -228,11 +277,44 @@ export const revenueSubscriptions = {
       `${base}/revenue/subscriptions`,
     )
   },
+
+  create(body: RevenueSubscriptionCreate): Promise<RevenueSubscriptionRead> {
+    return apiRequest<RevenueSubscriptionRead>(`${base}/revenue/subscriptions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  get(id: string): Promise<RevenueSubscriptionRead> {
+    return apiRequest<RevenueSubscriptionRead>(`${base}/revenue/subscriptions/${id}`)
+  },
+
+  update(
+    id: string,
+    body: RevenueSubscriptionUpdate,
+  ): Promise<RevenueSubscriptionRead> {
+    return apiRequest<RevenueSubscriptionRead>(`${base}/revenue/subscriptions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+
+  delete(id: string, hard = false): Promise<void> {
+    return apiRequest<void>(`${base}/revenue/subscriptions/${id}`, {
+      method: 'DELETE',
+      params: hard ? { hard: 'true' } : undefined,
+    })
+  },
 }
 
 export const revenueStreams = {
   list(): Promise<RevenueStreamRead[]> {
-    return apiRequest<RevenueStreamRead[]>(`${base}/revenue/streams`)
+    return apiRequest<PaginatedResponse<RevenueStreamRead>>(
+      `${base}/revenue/streams/paginated`,
+      {
+        params: { page: '1', size: '200' },
+      },
+    ).then((res) => res.items)
   },
 
   get(id: string): Promise<RevenueStreamRead> {
@@ -270,6 +352,23 @@ export const revenueStreams = {
 
 /** Location hierarchy: 1) districts 2) counties 3) subcounties 4) parishes 5) villages */
 export const locations = {
+  async all(): Promise<LocationRead[]> {
+    const pageSize = 100
+    let page = 1
+    let pages = 1
+    const items: LocationRead[] = []
+    while (page <= pages) {
+      const res = await apiRequest<PaginatedResponse<LocationRead>>(
+        `${base}/locations/default`,
+        { params: { page: String(page), size: String(pageSize) } },
+      )
+      items.push(...res.items)
+      pages = res.pages || 0
+      page += 1
+    }
+    return items
+  },
+
   districts(): Promise<string[]> {
     return apiRequest<string[]>(`${base}/locations/districts`)
   },
@@ -298,9 +397,94 @@ export const locations = {
   },
 }
 
+export const routeCharts = {
+  list(revenueSubcategoryId?: string | null): Promise<RouteChartRead[]> {
+    const params: Record<string, string> = { page: '1', size: '200' }
+    if (revenueSubcategoryId) params.revenue_subcategory_id = revenueSubcategoryId
+    return apiRequest<PaginatedResponse<RouteChartRead>>(
+      `${base}/route-charts/paginated`,
+      { params },
+    ).then((res) => res.items)
+  },
+
+  get(id: string): Promise<RouteChartRead> {
+    return apiRequest<RouteChartRead>(`${base}/route-charts/${id}`)
+  },
+
+  create(body: RouteChartCreate): Promise<RouteChartRead> {
+    return apiRequest<RouteChartRead>(`${base}/route-charts`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  update(id: string, body: RouteChartUpdate): Promise<RouteChartRead> {
+    return apiRequest<RouteChartRead>(`${base}/route-charts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+
+  delete(id: string, hard = false): Promise<void> {
+    return apiRequest<void>(`${base}/route-charts/${id}`, {
+      method: 'DELETE',
+      params: hard ? { hard: 'true' } : undefined,
+    })
+  },
+}
+
+export const analytics = {
+  dashboardSummaryStats(params?: {
+    from_date?: string | null
+    to_date?: string | null
+    as_of?: string | null
+  }): Promise<Record<string, unknown>> {
+    const query: Record<string, string> = {}
+    if (params?.from_date) query.from_date = params.from_date
+    if (params?.to_date) query.to_date = params.to_date
+    if (params?.as_of) query.as_of = params.as_of
+    return apiRequest<Record<string, unknown>>(
+      `${base}/analytics/dashboard-summary-stats`,
+      { params: query },
+    )
+  },
+
+  incidentsVsTime(params?: {
+    from_date?: string | null
+    to_date?: string | null
+    as_of?: string | null
+  }): Promise<Record<string, unknown>> {
+    const query: Record<string, string> = {}
+    if (params?.from_date) query.from_date = params.from_date
+    if (params?.to_date) query.to_date = params.to_date
+    if (params?.as_of) query.as_of = params.as_of
+    return apiRequest<Record<string, unknown>>(`${base}/analytics/incidents-vs-time`, {
+      params: query,
+    })
+  },
+
+  incidentsByCategory(params?: {
+    from_date?: string | null
+    to_date?: string | null
+  }): Promise<Record<string, unknown>> {
+    const query: Record<string, string> = {}
+    if (params?.from_date) query.from_date = params.from_date
+    if (params?.to_date) query.to_date = params.to_date
+    return apiRequest<Record<string, unknown>>(
+      `${base}/analytics/incidents-by-category`,
+      { params: query },
+    )
+  },
+}
+
 export const incidentCategories = {
   list(): Promise<IncidentCategoryRead[]> {
-    return apiRequest<IncidentCategoryRead[]>(`${base}/incidents/categories`)
+    return apiRequest<PaginatedResponse<IncidentCategoryRead>>(
+      `${base}/incidents/categories/paginated`,
+      {
+        params: { page: '1', size: '200' },
+      },
+    ).then((res) => res.items)
   },
 
   tree(): Promise<any[]> {
@@ -334,9 +518,21 @@ export const incidentCategories = {
 
 export const incidents = {
   list(status?: string): Promise<IncidentRead[]> {
-    const params: Record<string, string> = {}
+    const params: Record<string, string> = { page: '1', size: '200' }
     if (status) params.status = status
-    return apiRequest<IncidentRead[]>(`${base}/incidents`, { params })
+    return apiRequest<PaginatedResponse<IncidentRead>>(
+      `${base}/incidents/paginated`,
+      { params },
+    ).then((res) => res.items)
+  },
+
+  listCityAlerts(status?: string): Promise<IncidentRead[]> {
+    const params: Record<string, string> = { page: '1', size: '200' }
+    if (status) params.status = status
+    return apiRequest<PaginatedResponse<IncidentRead>>(
+      `${base}/incidents/city-alerts/paginated`,
+      { params },
+    ).then((res) => res.items)
   },
 
   get(id: string): Promise<IncidentDetailRead> {
@@ -395,7 +591,12 @@ export const incidents = {
 
 export const newsCategories = {
   list(): Promise<NewsCategoryRead[]> {
-    return apiRequest<NewsCategoryRead[]>(`${base}/news/categories`)
+    return apiRequest<PaginatedResponse<NewsCategoryRead>>(
+      `${base}/news/categories/paginated`,
+      {
+        params: { page: '1', size: '200' },
+      },
+    ).then((res) => res.items)
   },
 
   get(id: string): Promise<NewsCategoryRead> {
@@ -428,12 +629,15 @@ export const newsArticles = {
     category_id?: string | null
     status?: number | null
   }): Promise<NewsArticleRead[]> {
-    const query: Record<string, string> = {}
+    const query: Record<string, string> = { page: '1', size: '200' }
     if (params?.category_id) query.category_id = params.category_id
     if (params?.status != null) query.status = String(params.status)
-    return apiRequest<NewsArticleRead[]>(`${base}/news/articles`, {
-      params: Object.keys(query).length ? query : undefined,
-    })
+    return apiRequest<PaginatedResponse<NewsArticleRead>>(
+      `${base}/news/articles/paginated`,
+      {
+        params: query,
+      },
+    ).then((res) => res.items)
   },
 
   get(id: string): Promise<NewsArticleRead> {

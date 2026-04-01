@@ -7,6 +7,7 @@ import { revenueSubcategories as api } from '../../api/endpoints'
 import { suggestedCodeFromCategoryName } from '../../utils/codeFromCategoryName'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface RevenueCategoriesCrudListProps {
   parentCategories: RevenueCategoryRead[]
@@ -57,10 +58,19 @@ export const RevenueCategoriesCrudList: React.FC<
   )
   const [saving, setSaving] = useState(false)
   const [createCodeFollowsName, setCreateCodeFollowsName] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const parentNameById = useMemo(
     () => Object.fromEntries(parentCategories.map((c) => [c.id, c.name])),
     [parentCategories],
+  )
+  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedCategories = useMemo(
+    () =>
+      categories.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [categories, currentPage],
   )
 
   const closeDialogs = () => {
@@ -421,7 +431,7 @@ export const RevenueCategoriesCrudList: React.FC<
             </tr>
           </thead>
           <tbody>
-            {categories.map((row) => (
+            {pagedCategories.map((row) => (
               <tr key={row.id}>
                 <td>{parentNameById[row.category_id] ?? row.category_id}</td>
                 <td>{row.code}</td>
@@ -476,6 +486,17 @@ export const RevenueCategoriesCrudList: React.FC<
             No categories for this filter.
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={categories.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

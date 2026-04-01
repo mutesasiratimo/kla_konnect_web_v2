@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import type { RevenueCategoryRead } from '../../api/types'
 import { revenueCategories as api } from '../../api/endpoints'
 import { suggestedCodeFromCategoryName } from '../../utils/codeFromCategoryName'
 import { DashboardDialog } from '../DashboardDialog'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface RevenueParentCategoriesTabProps {
   categories: RevenueCategoryRead[]
@@ -23,6 +24,15 @@ export const RevenueParentCategoriesTab: React.FC<
   const [saving, setSaving] = useState(false)
   /** While true, code updates from name on create; cleared when user edits code. */
   const [createCodeFollowsName, setCreateCodeFollowsName] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedCategories = useMemo(
+    () =>
+      categories.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [categories, currentPage],
+  )
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -220,7 +230,7 @@ export const RevenueParentCategoriesTab: React.FC<
             </tr>
           </thead>
           <tbody>
-            {categories.map((row) => (
+            {pagedCategories.map((row) => (
               <tr key={row.id}>
                 <td>{row.code}</td>
                 <td>{row.name}</td>
@@ -264,6 +274,17 @@ export const RevenueParentCategoriesTab: React.FC<
             No parent categories yet.
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={categories.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

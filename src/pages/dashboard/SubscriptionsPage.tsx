@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { SubscriptionCategoryRow } from './mockData'
+import { DataTablePagination } from '../../components/table/DataTablePagination'
 
 interface SubscriptionsPageProps {
   subscriptionsByCategory: SubscriptionCategoryRow[]
@@ -7,6 +9,15 @@ interface SubscriptionsPageProps {
 export function SubscriptionsPage({
   subscriptionsByCategory,
 }: SubscriptionsPageProps) {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(subscriptionsByCategory.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedSubscriptions = subscriptionsByCategory.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
+
   return (
     <div className="dashboard-page">
       <h1 className="dashboard-page-title">Subscriptions</h1>
@@ -31,7 +42,7 @@ export function SubscriptionsPage({
               </tr>
             </thead>
             <tbody>
-              {subscriptionsByCategory.map((row) => {
+              {pagedSubscriptions.map((row) => {
                 const rate =
                   row.registered === 0
                     ? '—'
@@ -50,6 +61,17 @@ export function SubscriptionsPage({
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={subscriptionsByCategory.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

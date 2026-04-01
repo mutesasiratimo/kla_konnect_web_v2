@@ -8,7 +8,7 @@ export type StoredSession = {
   refresh_token: string
   user: LoginResponse['user']
   role?: LoginResponse['role'] | null
-  permissions?: string[] | null
+  permissions?: Record<string, boolean> | null
   lastActivityAt: number
 }
 
@@ -28,6 +28,7 @@ const getBaseUrl = (): string => {
     return 'http://localhost:5173'
   }
   return 'http://109.123.241.160:8041'
+  // return 'http://localhost:8041'  
 }
 
 export function getToken(): string | null {
@@ -55,7 +56,7 @@ export function setSession(data: {
   refresh_token: string
   user: LoginResponse['user']
   role?: LoginResponse['role'] | null
-  permissions?: string[] | null
+  permissions?: Record<string, boolean> | null
 }): void {
   const session: StoredSession = {
     ...data,

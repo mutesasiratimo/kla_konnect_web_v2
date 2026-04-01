@@ -10,7 +10,10 @@ import {
   revenueCategories,
   revenueSubcategories,
   revenueStreams,
+  revenueSubscriptions,
   stages,
+  routeCharts,
+  analytics,
 } from './api/endpoints'
 import type {
   IncidentRead,
@@ -21,8 +24,10 @@ import type {
   RoleRead,
   RevenueCategoryRead,
   RevenueStreamRead,
+  RevenueSubscriptionRead,
   RevenueSubcategoryRead,
   StageRead,
+  RouteChartRead,
 } from './api/types'
 import {
   type DashboardPage,
@@ -30,21 +35,35 @@ import {
   navItems,
   incidentPages,
   newsPages,
+  mobilityPages,
+  revenueAssurancePages,
 } from './pages/dashboard/navConfig'
 import {
   sampleVehicles,
-  sampleStages,
-  categoryRows,
-  sampleRoutes,
   subscriptionsByCategory,
 } from './pages/dashboard/mockData'
-import type { VehicleRecord } from './pages/dashboard/mockData'
 import type { IncidentDateRangeFilter } from './pages/dashboard/pageTypes'
 import { DashboardMainContent } from './pages/dashboard/DashboardMainContent'
 
 type DashboardProps = {
   userName: string
   onLogout: () => void
+}
+
+type DashboardDatePreset =
+  | 'ytd'
+  | 'today'
+  | 'this-month'
+  | 'this-quarter'
+  | 'this-year'
+  | 'custom'
+
+type TimeSeriesPoint = { label: string; value: number }
+
+type DashboardAnalyticsState = {
+  summary: Record<string, unknown> | null
+  incidentsVsTime: Record<string, unknown> | null
+  incidentsByCategory: Record<string, unknown> | null
 }
 
 function Dashboard({ userName, onLogout }: DashboardProps) {
@@ -55,23 +74,27 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [incidentsExpanded, setIncidentsExpanded] = useState(false)
   const [newsExpanded, setNewsExpanded] = useState(false)
-  const [vehiclePage, setVehiclePage] = useState(1)
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleRecord | null>(
+  const [mobilityExpanded, setMobilityExpanded] = useState(false)
+  const [revenueAssuranceExpanded, setRevenueAssuranceExpanded] = useState(false)
+  const [dashboardDatePreset, setDashboardDatePreset] =
+    useState<DashboardDatePreset>('ytd')
+  const [dashboardFromDate, setDashboardFromDate] = useState('')
+  const [dashboardToDate, setDashboardToDate] = useState('')
+  const [dashboardDatePickerOpen, setDashboardDatePickerOpen] = useState(false)
+  const [dashboardAnalytics, setDashboardAnalytics] =
+    useState<DashboardAnalyticsState>({
+      summary: null,
+      incidentsVsTime: null,
+      incidentsByCategory: null,
+    })
+  const [dashboardAnalyticsLoading, setDashboardAnalyticsLoading] = useState(false)
+  const [dashboardAnalyticsError, setDashboardAnalyticsError] = useState<string | null>(
     null,
   )
-  const [vehicleCategoryFilter, setVehicleCategoryFilter] =
-    useState<string>('all')
-  const [vehicleSearch, setVehicleSearch] = useState('')
   const [showNewVehicle, setShowNewVehicle] = useState(false)
-  const [vehicleStageFilter, setVehicleStageFilter] = useState<string>('all')
-  const [vehicleDivisionFilter, setVehicleDivisionFilter] =
-    useState<string>('all')
-  const [vehiclePaymentFilter, setVehiclePaymentFilter] =
-    useState<string>('all')
-  const [vehiclePermitFilter, setVehiclePermitFilter] =
-    useState<string>('all')
   const userMenuRef = useRef<HTMLDivElement>(null)
   const [incidentData, setIncidentData] = useState<IncidentRead[]>([])
+  const [cityAlertData, setCityAlertData] = useState<IncidentRead[]>([])
   const [catData, setCatData] = useState<IncidentCategoryRead[]>([])
   const [newsData, setNewsData] = useState<NewsArticleRead[]>([])
   const [newsCategoryData, setNewsCategoryData] = useState<NewsCategoryRead[]>(
@@ -96,6 +119,13 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   )
   const [streamsLoadError, setStreamsLoadError] = useState<string | null>(null)
   const [stageData, setStageData] = useState<StageRead[]>([])
+  const [revenueSubscriptionData, setRevenueSubscriptionData] = useState<
+    RevenueSubscriptionRead[]
+  >([])
+  const [routeChartData, setRouteChartData] = useState<RouteChartRead[]>([])
+  const [routeChartsLoadError, setRouteChartsLoadError] = useState<string | null>(
+    null,
+  )
   const [vehicleStreamParentFilter, setVehicleStreamParentFilter] =
     useState<string>('')
   const [revenueSubParentFilter, setRevenueSubParentFilter] =
@@ -114,6 +144,19 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
       console.error(e)
       setIncidentsLoadError(
         'Could not load incidents. Sign in and ensure the API is reachable.',
+      )
+    }
+  }, [])
+
+  const loadCityAlerts = useCallback(async () => {
+    try {
+      const data = await incidents.listCityAlerts()
+      setCityAlertData(data)
+      setIncidentsLoadError(null)
+    } catch (e) {
+      console.error(e)
+      setIncidentsLoadError(
+        'Could not load city alerts. Sign in and ensure the API is reachable.',
       )
     }
   }, [])
@@ -226,6 +269,21 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
     }
   }, [])
 
+  const loadRevenueSubscriptions = useCallback(async () => {
+    try {
+      const data = await revenueSubscriptions.list()
+      setRevenueSubscriptionData(data)
+      setRevenueLoadError(null)
+    } catch (e) {
+      console.error(e)
+      setRevenueLoadError(
+        (prev) =>
+          prev ??
+          'Could not load subscriptions. Sign in and ensure the API is reachable.',
+      )
+    }
+  }, [])
+
   const loadStages = useCallback(async () => {
     try {
       const data = await stages.list()
@@ -236,12 +294,106 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
     }
   }, [])
 
+  const loadRouteCharts = useCallback(async () => {
+    try {
+      const data = await routeCharts.list()
+      setRouteChartData(data)
+      setRouteChartsLoadError(null)
+    } catch (e) {
+      console.error(e)
+      setRouteChartsLoadError(
+        'Could not load route charts. Sign in and ensure the API is reachable.',
+      )
+    }
+  }, [])
+
+  const toIsoStart = (dateStr: string): string =>
+    new Date(`${dateStr}T00:00:00`).toISOString()
+  const toIsoEnd = (dateStr: string): string =>
+    new Date(`${dateStr}T23:59:59.999`).toISOString()
+
+  const getDashboardDateRange = useCallback(() => {
+    const now = new Date()
+    const start = new Date(now)
+    const end = new Date(now)
+
+    if (dashboardDatePreset === 'custom') {
+      if (!dashboardFromDate || !dashboardToDate) return null
+      return {
+        from_date: toIsoStart(dashboardFromDate),
+        to_date: toIsoEnd(dashboardToDate),
+      }
+    }
+    if (dashboardDatePreset === 'today') {
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+      return { from_date: start.toISOString(), to_date: end.toISOString() }
+    }
+    if (dashboardDatePreset === 'this-month') {
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+      return { from_date: start.toISOString(), to_date: end.toISOString() }
+    }
+    if (dashboardDatePreset === 'this-quarter') {
+      const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
+      start.setMonth(quarterStartMonth, 1)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+      return { from_date: start.toISOString(), to_date: end.toISOString() }
+    }
+    if (dashboardDatePreset === 'this-year' || dashboardDatePreset === 'ytd') {
+      start.setMonth(0, 1)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+      return { from_date: start.toISOString(), to_date: end.toISOString() }
+    }
+    return null
+  }, [dashboardDatePreset, dashboardFromDate, dashboardToDate])
+
+  const loadDashboardAnalytics = useCallback(async () => {
+    const range = getDashboardDateRange()
+    if (!range) return
+    setDashboardAnalyticsLoading(true)
+    try {
+      const [summary, vsTime, byCategory] = await Promise.all([
+        analytics.dashboardSummaryStats(range),
+        analytics.incidentsVsTime(range),
+        analytics.incidentsByCategory(range),
+      ])
+      setDashboardAnalytics({
+        summary,
+        incidentsVsTime: vsTime,
+        incidentsByCategory: byCategory,
+      })
+      setDashboardAnalyticsError(null)
+    } catch (e) {
+      console.error(e)
+      setDashboardAnalyticsError(
+        'Could not load dashboard analytics. Showing fallback values.',
+      )
+    } finally {
+      setDashboardAnalyticsLoading(false)
+    }
+  }, [getDashboardDateRange])
+
   useEffect(() => {
+    if (currentPage === 'dashboard') {
+      void loadIncidents()
+      void loadCityAlerts()
+      void loadCategories()
+      return
+    }
+    if (currentPage === 'incidents-city-alerts' || currentPage === 'city-alerts') {
+      void loadCityAlerts()
+      void loadCategories()
+      return
+    }
     if (currentPage.startsWith('incidents')) {
       void loadIncidents()
       void loadCategories()
     }
-  }, [currentPage, loadIncidents, loadCategories])
+  }, [currentPage, loadIncidents, loadCityAlerts, loadCategories])
 
   useEffect(() => {
     if (currentPage.startsWith('news')) {
@@ -251,11 +403,33 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   }, [currentPage, loadNewsArticles, loadNewsCategories])
 
   useEffect(() => {
-    if (currentPage === 'users') {
+    if (currentPage === 'users' || currentPage === 'settings') {
       void loadUsers()
       void loadRoles()
     }
   }, [currentPage, loadUsers, loadRoles])
+
+  useEffect(() => {
+    if (currentPage === 'dashboard' && userData.length === 0) {
+      void loadUsers()
+    }
+  }, [currentPage, userData.length, loadUsers])
+
+  useEffect(() => {
+    if (currentPage === 'dashboard') {
+      void loadDashboardAnalytics()
+    }
+  }, [currentPage, loadDashboardAnalytics])
+
+  useEffect(() => {
+    if (currentPage !== 'dashboard') return
+    const refreshId = window.setInterval(() => {
+      void loadDashboardAnalytics()
+    }, 5 * 60 * 1000)
+    return () => {
+      window.clearInterval(refreshId)
+    }
+  }, [currentPage, loadDashboardAnalytics])
 
   useEffect(() => {
     if (currentPage === 'categories') {
@@ -274,8 +448,17 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   useEffect(() => {
     if (currentPage === 'settings') {
       void loadRevenueCategories()
+      void loadRevenueStreams()
+      void loadRevenueSubscriptions()
     }
-  }, [currentPage, loadRevenueCategories])
+  }, [currentPage, loadRevenueCategories, loadRevenueStreams, loadRevenueSubscriptions])
+
+  useEffect(() => {
+    if (currentPage === 'routes') {
+      void loadRouteCharts()
+      void loadRevenueSubcategories(undefined)
+    }
+  }, [currentPage, loadRouteCharts, loadRevenueSubcategories])
 
   useEffect(() => {
     if (currentPage === 'vehicles') {
@@ -301,6 +484,18 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   useEffect(() => {
     if (newsPages.includes(currentPage)) {
       setNewsExpanded(true)
+    }
+  }, [currentPage])
+
+  useEffect(() => {
+    if (mobilityPages.includes(currentPage)) {
+      setMobilityExpanded(true)
+    }
+  }, [currentPage])
+
+  useEffect(() => {
+    if (revenueAssurancePages.includes(currentPage)) {
+      setRevenueAssuranceExpanded(true)
     }
   }, [currentPage])
 
@@ -410,11 +605,12 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   })
 
   const incidentRecords = incidentsInRange.filter((i) => !i.iscityreport)
-  const cityAlertRecords = incidentsInRange.filter((i) => i.iscityreport)
+  const cityAlertRecords = cityAlertData
 
   const pendingIncidents = incidentRecords.filter((i) => i.status === '1')
   const liveIncidents = pendingIncidents.filter((i) => i.isemergency)
   const resolvedIncidents = incidentRecords.filter((i) => i.status === '2')
+  const archivedIncidents = incidentRecords.filter((i) => i.status === '0')
 
   const avgResolutionHours = (() => {
     const durations = resolvedIncidents
@@ -432,83 +628,185 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
     return total / durations.length
   })()
 
-  const pageSize = 5
-
-  const filteredVehicles = sampleVehicles.filter((vehicle) => {
-    const matchesCategory =
-      vehicleCategoryFilter === 'all' ||
-      vehicle.vehicleType.toLowerCase() === vehicleCategoryFilter
-
-    if (!matchesCategory) return false
-
-    const matchesStage =
-      vehicleStageFilter === 'all' || vehicle.stage === vehicleStageFilter
-    if (!matchesStage) return false
-
-    const matchesDivision =
-      vehicleDivisionFilter === 'all' ||
-      vehicle.division === vehicleDivisionFilter
-    if (!matchesDivision) return false
-
-    const matchesPayment =
-      vehiclePaymentFilter === 'all' ||
-      vehicle.paymentStatus.toLowerCase() === vehiclePaymentFilter
-    if (!matchesPayment) return false
-
-    const matchesPermit =
-      vehiclePermitFilter === 'all' ||
-      vehicle.permitStatus.toLowerCase() === vehiclePermitFilter
-    if (!matchesPermit) return false
-
-    const query = vehicleSearch.trim().toLowerCase()
-    if (!query) return true
-
-    return (
-      vehicle.registration.toLowerCase().includes(query) ||
-      vehicle.makeModel.toLowerCase().includes(query) ||
-      vehicle.stage.toLowerCase().includes(query) ||
-      vehicle.operator.toLowerCase().includes(query)
-    )
-  })
-
-  const totalVehiclePages = Math.max(
-    1,
-    Math.ceil(filteredVehicles.length / pageSize),
-  )
-  const currentVehiclePage = Math.min(vehiclePage, totalVehiclePages)
-  const pagedVehicles = filteredVehicles.slice(
-    (currentVehiclePage - 1) * pageSize,
-    currentVehiclePage * pageSize,
-  )
-
-  const goToVehiclePage = (page: number) => {
-    const next = Math.min(Math.max(page, 1), totalVehiclePages)
-    setVehiclePage(next)
+  const vehicleStats = {
+    total: sampleVehicles.length,
+    compliant: sampleVehicles.filter(
+      (v) => v.paymentStatus === 'Paid' && v.permitStatus === 'Valid',
+    ).length,
+    inReview: sampleVehicles.filter((v) => v.status === 'Pending').length,
   }
 
-  const categoryTotal = categoryRows.reduce(
-    (sum, row) => sum + row.vehiclesRegistered,
-    0,
-  )
-
-  let categoryOffset = 0
-  const donutSegments = categoryRows.map((row, index) => {
-    const value =
-      categoryTotal === 0 ? 0 : (row.vehiclesRegistered / categoryTotal) * 100
-    const segment = {
-      key: row.code,
-      label: row.name,
-      value,
-      percentageLabel: Math.round(value),
-      offset: categoryOffset,
-      index,
+  const pickNumber = (obj: Record<string, unknown> | null, keys: string[]) => {
+    if (!obj) return null
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === 'number' && Number.isFinite(value)) return value
+      if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value)
+        if (!Number.isNaN(parsed)) return parsed
+      }
     }
-    categoryOffset += value
-    return segment
-  })
+    return null
+  }
+
+  const summary = dashboardAnalytics.summary
+  const summaryRevenueStreams =
+    summary && typeof summary.revenue_streams === 'object'
+      ? (summary.revenue_streams as Record<string, unknown>)
+      : null
+  const dashboardPendingCount =
+    pickNumber(summary, ['pending_incidents', 'pending', 'incidents_pending']) ??
+    pendingIncidents.length
+  const dashboardLiveCount =
+    pickNumber(summary, ['live_incidents', 'live', 'incidents_live']) ??
+    liveIncidents.length
+  const dashboardResolvedCount =
+    pickNumber(summary, ['resolved_incidents', 'resolved', 'incidents_resolved']) ??
+    resolvedIncidents.length
+  const dashboardArchivedCount =
+    pickNumber(summary, ['archived_incidents', 'archived', 'incidents_archived']) ??
+    archivedIncidents.length
+  const dashboardUsersCount =
+    pickNumber(summary, ['total_users', 'users_total', 'users']) ?? userData.length
+  const dashboardUsersActiveCount =
+    pickNumber(summary, ['active_users', 'users_active']) ?? dashboardUsersCount
+  const dashboardVehiclesTotalCount =
+    pickNumber(summaryRevenueStreams, ['total']) ??
+    pickNumber(summary, ['total_vehicles', 'vehicles_total', 'vehicles']) ??
+    vehicleStats.total
+  const dashboardVehiclesCompliantCount =
+    pickNumber(summaryRevenueStreams, ['compliant']) ??
+    pickNumber(summary, ['compliant_vehicles', 'vehicles_compliant']) ??
+    vehicleStats.compliant
+  const dashboardVehiclesInReviewCount =
+    pickNumber(summaryRevenueStreams, ['pending']) ??
+    pickNumber(summary, ['vehicles_in_review', 'in_review_vehicles']) ??
+    vehicleStats.inReview
+
+  const normalizeTimeSeries = (
+    payload: Record<string, unknown> | null,
+    keys: string[],
+  ): TimeSeriesPoint[] => {
+    if (!payload) return []
+
+    const parseFromArray = (items: unknown[]): TimeSeriesPoint[] =>
+      items
+        .map((row) => {
+          if (!row || typeof row !== 'object') return null
+          const obj = row as Record<string, unknown>
+          const label = String(
+            obj.label ?? obj.name ?? obj.period ?? obj.month ?? obj.quarter ?? obj.year ?? '',
+          ).trim()
+          const raw = obj.value ?? obj.count ?? obj.incidents ?? obj.total
+          const value = typeof raw === 'number' ? raw : Number(raw)
+          if (!label || Number.isNaN(value)) return null
+          return { label, value }
+        })
+        .filter((v): v is TimeSeriesPoint => v !== null)
+
+    const parseFromRecord = (obj: Record<string, unknown>): TimeSeriesPoint[] =>
+      Object.entries(obj)
+        .map(([label, raw]) => {
+          const value = typeof raw === 'number' ? raw : Number(raw)
+          if (!label || Number.isNaN(value)) return null
+          return { label: String(label).trim(), value }
+        })
+        .filter((v): v is TimeSeriesPoint => v !== null)
+
+    const containers: Record<string, unknown>[] = [
+      payload,
+      ...(payload.data && typeof payload.data === 'object'
+        ? [payload.data as Record<string, unknown>]
+        : []),
+      ...(payload.results && typeof payload.results === 'object'
+        ? [payload.results as Record<string, unknown>]
+        : []),
+    ]
+
+    for (const container of containers) {
+      for (const key of keys) {
+        const candidate = container[key]
+        if (Array.isArray(candidate)) {
+          const parsed = parseFromArray(candidate)
+          if (parsed.length > 0) return parsed
+        } else if (candidate && typeof candidate === 'object') {
+          const parsed = parseFromRecord(candidate as Record<string, unknown>)
+          if (parsed.length > 0) return parsed
+        }
+      }
+    }
+
+    return []
+  }
+
+  const incidentsVsTimeData = {
+    monthly: normalizeTimeSeries(dashboardAnalytics.incidentsVsTime, [
+      'monthly',
+      'month',
+      'months',
+      'monthly_data',
+    ]),
+    quarterly: normalizeTimeSeries(dashboardAnalytics.incidentsVsTime, [
+      'quarterly',
+      'quarters',
+      'quarterly_data',
+    ]),
+    annual: normalizeTimeSeries(dashboardAnalytics.incidentsVsTime, [
+      'annual',
+      'yearly',
+      'years',
+      'annual_data',
+    ]),
+  }
+
+  const incidentsByCategoryData = (() => {
+    const payload = dashboardAnalytics.incidentsByCategory
+    if (!payload) return []
+    const source = (['categories', 'data', 'items'] as const)
+      .map((k) => payload[k])
+      .find((v) => Array.isArray(v)) as unknown[] | undefined
+    if (!source) return []
+    return source
+      .map((row) => {
+        if (!row || typeof row !== 'object') return null
+        const obj = row as Record<string, unknown>
+        const name = String(obj.name ?? obj.category ?? obj.label ?? '').trim()
+        const raw = obj.value ?? obj.count ?? obj.total
+        const value = typeof raw === 'number' ? raw : Number(raw)
+        if (!name || Number.isNaN(value)) return null
+        return { name, value }
+      })
+      .filter((v): v is { name: string; value: number } => v !== null)
+  })()
 
   const isIncidentsActive = incidentPages.includes(currentPage)
   const isNewsActive = newsPages.includes(currentPage)
+  const isMobilityActive = mobilityPages.includes(currentPage)
+  const isRevenueAssuranceActive = revenueAssurancePages.includes(currentPage)
+  const appBarTitle: string =
+    {
+      dashboard: 'Dashboard',
+      incidents: 'Incidents',
+      'incidents-summary': 'Incidents - Summary',
+      'incidents-incidents': 'Incidents - Records',
+      'incidents-city-alerts': 'Incidents - City Alerts',
+      'city-alerts': 'City Alerts',
+      'incidents-categories': 'Incidents - Categories',
+      news: 'News',
+      'news-news': 'News - Articles',
+      'news-categories': 'News - Categories',
+      mobility: 'Mobility',
+      vehicles: 'Vehicles',
+      stages: 'Stages',
+      categories: 'Categories',
+      routes: 'Route Charts',
+      reports: 'Reports',
+      'revenue-assurance': 'Revenue Assurance',
+      subscriptions: 'Subscriptions',
+      enforcements: 'Enforcements',
+      users: 'Users',
+      settings: 'Settings',
+    }[currentPage] ?? 'Dashboard'
 
   const onRefreshRevenue = useCallback(async () => {
     await loadRevenueCategories()
@@ -529,6 +827,15 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   const onRefreshParentCategories = useCallback(async () => {
     await loadRevenueCategories()
   }, [loadRevenueCategories])
+  const onRefreshSubscriptions = useCallback(async () => {
+    await loadRevenueSubscriptions()
+    await loadRevenueCategories()
+    await loadRevenueStreams()
+  }, [loadRevenueSubscriptions, loadRevenueCategories, loadRevenueStreams])
+
+  const onViewIncidentDetails = () => {
+    navigateTo('incidents-summary')
+  }
 
   const onRefreshStreams = useCallback(async () => {
     await loadRevenueStreams()
@@ -541,6 +848,13 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
     loadRevenueSubcategories,
     loadStages,
   ])
+  const onRefreshStages = useCallback(async () => {
+    await loadStages()
+  }, [loadStages])
+  const onRefreshRouteCharts = useCallback(async () => {
+    await loadRouteCharts()
+    await loadRevenueSubcategories(undefined)
+  }, [loadRouteCharts, loadRevenueSubcategories])
 
   return (
     <div
@@ -567,8 +881,23 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
           {navItems.map((item) => {
             if (item.children) {
               const isIncidentGroup = item.key === 'incidents'
-              const isActiveGroup = isIncidentGroup ? isIncidentsActive : isNewsActive
-              const isExpanded = isIncidentGroup ? incidentsExpanded : newsExpanded
+              const isNewsGroup = item.key === 'news'
+              const isMobilityGroup = item.key === 'mobility'
+              const isRevenueAssuranceGroup = item.key === 'revenue-assurance'
+              const isActiveGroup = isIncidentGroup
+                ? isIncidentsActive
+                : isNewsGroup
+                  ? isNewsActive
+                  : isMobilityGroup
+                    ? isMobilityActive
+                    : isRevenueAssuranceActive
+              const isExpanded = isIncidentGroup
+                ? incidentsExpanded
+                : isNewsGroup
+                  ? newsExpanded
+                  : isMobilityGroup
+                    ? mobilityExpanded
+                    : revenueAssuranceExpanded
               return (
                 <div key={item.key} className="sidebar-nav-group">
                   <button
@@ -579,7 +908,10 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
                         navigateTo(item.children![0].key)
                       } else {
                         if (isIncidentGroup) setIncidentsExpanded((e) => !e)
-                        else setNewsExpanded((e) => !e)
+                        else if (isNewsGroup) setNewsExpanded((e) => !e)
+                        else if (isMobilityGroup) setMobilityExpanded((e) => !e)
+                        else if (isRevenueAssuranceGroup)
+                          setRevenueAssuranceExpanded((e) => !e)
                       }
                     }}
                     aria-expanded={!sidebarCollapsed ? isExpanded : undefined}
@@ -666,6 +998,10 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
             <span aria-hidden="true">☰</span>
           </button>
 
+          <div className="navbar-page-title" aria-live="polite">
+            {appBarTitle}
+          </div>
+
           <div className="navbar-spacer" />
 
           <div className="navbar-actions">
@@ -690,6 +1026,82 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
             </button>
+            <div className="navbar-calendar-wrap">
+              <button
+                type="button"
+                className="navbar-icon-btn"
+                aria-label="Dashboard date range"
+                title="Dashboard date range"
+                onClick={() => setDashboardDatePickerOpen((open) => !open)}
+              >
+                <i className="fa fa-calendar" aria-hidden="true" />
+              </button>
+              {dashboardDatePickerOpen && (
+                <div className="navbar-calendar-popover">
+                  <label className="dashboard-dialog-field">
+                    <span>Range</span>
+                    <select
+                      className="dashboard-dialog-select"
+                      value={dashboardDatePreset}
+                      onChange={(e) =>
+                        setDashboardDatePreset(e.target.value as DashboardDatePreset)
+                      }
+                    >
+                      <option value="ytd">Year to date (default)</option>
+                      <option value="today">Today</option>
+                      <option value="this-month">This month</option>
+                      <option value="this-quarter">This quarter</option>
+                      <option value="this-year">This year</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </label>
+                  {dashboardDatePreset === 'custom' && (
+                    <>
+                      <label className="dashboard-dialog-field">
+                        <span>From</span>
+                        <input
+                          type="date"
+                          value={dashboardFromDate}
+                          onChange={(e) => setDashboardFromDate(e.target.value)}
+                        />
+                      </label>
+                      <label className="dashboard-dialog-field">
+                        <span>To</span>
+                        <input
+                          type="date"
+                          value={dashboardToDate}
+                          onChange={(e) => setDashboardToDate(e.target.value)}
+                        />
+                      </label>
+                    </>
+                  )}
+                  {dashboardAnalyticsError && (
+                    <small className="dashboard-v2-inline-hint">
+                      {dashboardAnalyticsError}
+                    </small>
+                  )}
+                  <div className="dashboard-dialog-actions" style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setDashboardDatePickerOpen(false)}
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => {
+                        void loadDashboardAnalytics()
+                        setDashboardDatePickerOpen(false)
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button
               type="button"
@@ -804,7 +1216,6 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
         <DashboardMainContent
           currentPage={currentPage}
           userName={userName}
-          donutSegments={donutSegments}
           incidentsLoadError={incidentsLoadError}
           incidentDateFilter={incidentDateFilter}
           setIncidentDateFilter={setIncidentDateFilter}
@@ -815,12 +1226,22 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
           pendingIncidentsCount={pendingIncidents.length}
           liveIncidentsCount={liveIncidents.length}
           resolvedIncidentsCount={resolvedIncidents.length}
+          archivedIncidentsCount={archivedIncidents.length}
+          dashboardPendingIncidentsCount={dashboardPendingCount}
+          dashboardLiveIncidentsCount={dashboardLiveCount}
+          dashboardResolvedIncidentsCount={dashboardResolvedCount}
+          dashboardArchivedIncidentsCount={dashboardArchivedCount}
+          dashboardUsersCount={dashboardUsersCount}
+          dashboardVehiclesTotalCount={dashboardVehiclesTotalCount}
+          dashboardVehiclesCompliantCount={dashboardVehiclesCompliantCount}
+          dashboardVehiclesInReviewCount={dashboardVehiclesInReviewCount}
           avgResolutionHours={avgResolutionHours}
           incidentData={incidentData}
           incidentRecords={incidentRecords}
           cityAlertRecords={cityAlertRecords}
           catData={catData}
           loadIncidents={loadIncidents}
+          loadCityAlerts={loadCityAlerts}
           loadCategories={loadCategories}
           newsLoadError={newsLoadError}
           newsData={newsData}
@@ -829,37 +1250,22 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
           loadNewsCategories={loadNewsCategories}
           showNewVehicle={showNewVehicle}
           setShowNewVehicle={setShowNewVehicle}
-          vehicleCategoryFilter={vehicleCategoryFilter}
-          setVehicleCategoryFilter={setVehicleCategoryFilter}
-          vehicleStageFilter={vehicleStageFilter}
-          setVehicleStageFilter={setVehicleStageFilter}
-          vehicleDivisionFilter={vehicleDivisionFilter}
-          setVehicleDivisionFilter={setVehicleDivisionFilter}
-          vehiclePaymentFilter={vehiclePaymentFilter}
-          setVehiclePaymentFilter={setVehiclePaymentFilter}
-          vehiclePermitFilter={vehiclePermitFilter}
-          setVehiclePermitFilter={setVehiclePermitFilter}
-          vehicleSearch={vehicleSearch}
-          setVehicleSearch={setVehicleSearch}
-          pagedVehicles={pagedVehicles}
-          currentVehiclePage={currentVehiclePage}
-          totalVehiclePages={totalVehiclePages}
-          pageSize={pageSize}
-          filteredVehiclesLength={filteredVehicles.length}
-          goToVehiclePage={goToVehiclePage}
-          selectedVehicle={selectedVehicle}
-          setSelectedVehicle={setSelectedVehicle}
+          vehicleStats={vehicleStats}
+          onViewIncidentDetails={onViewIncidentDetails}
           streamsLoadError={streamsLoadError}
           revenueStreams={revenueStreamData}
           vehicleStreamParentFilter={vehicleStreamParentFilter}
           setVehicleStreamParentFilter={setVehicleStreamParentFilter}
           stageData={stageData}
           onRefreshStreams={onRefreshStreams}
-          sampleStages={sampleStages}
-          sampleRoutes={sampleRoutes}
+          onRefreshStages={onRefreshStages}
+          routeChartData={routeChartData}
+          routeChartsLoadError={routeChartsLoadError}
+          onRefreshRouteCharts={onRefreshRouteCharts}
           subscriptionsByCategory={subscriptionsByCategory}
           revenueLoadError={revenueLoadError}
           revenueCategoryData={revenueCategoryData}
+          revenueSubscriptionData={revenueSubscriptionData}
           revenueSubcategoryData={revenueSubcategoryData}
           revenueSubParentFilter={revenueSubParentFilter}
           setRevenueSubParentFilter={setRevenueSubParentFilter}
@@ -869,8 +1275,13 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
           roleData={roleData}
           onRefreshUsers={onRefreshUsers}
           onRefreshParentCategories={onRefreshParentCategories}
+          onRefreshSubscriptions={onRefreshSubscriptions}
+          usersActiveCount={dashboardUsersActiveCount}
+          incidentsVsTimeData={incidentsVsTimeData}
+          incidentsByCategoryData={incidentsByCategoryData}
+          analyticsLoading={dashboardAnalyticsLoading}
         />
-      </div>
+                        </div>
     </div>
   )
 }

@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://109.123.241.160:8041',
+        // target: 'http://localhost:8041',
         changeOrigin: true,
       },
     },

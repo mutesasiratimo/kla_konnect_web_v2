@@ -24,6 +24,7 @@ interface IncidentsSectionProps {
   cityAlertRecords: IncidentRead[]
   catData: IncidentCategoryRead[]
   loadIncidents: () => void | Promise<void>
+  loadCityAlerts: () => void | Promise<void>
   loadCategories: () => void | Promise<void>
 }
 
@@ -45,6 +46,7 @@ export function IncidentsSection({
   cityAlertRecords,
   catData,
   loadIncidents,
+  loadCityAlerts,
   loadCategories,
 }: IncidentsSectionProps) {
   return (
@@ -191,7 +193,7 @@ export function IncidentsSection({
           />
         </div>
       )}
-      {currentPage === 'incidents-city-alerts' && (
+      {(currentPage === 'incidents-city-alerts' || currentPage === 'city-alerts') && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
             <div>
@@ -209,7 +211,7 @@ export function IncidentsSection({
           <IncidentList
             data={cityAlertRecords}
             categoryOptions={catData.map((c) => ({ id: c.id, name: c.name }))}
-            onRefresh={loadIncidents}
+            onRefresh={loadCityAlerts}
             showCreateButton
             createAsCityAlert
           />

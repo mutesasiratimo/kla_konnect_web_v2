@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import PhoneInput from 'react-phone-number-input'
 import Select from 'react-select'
 import 'react-phone-number-input/style.css'
 import './Register.css'
-import { users as usersApi, revenueStreams, revenueCategories, locations as locationsApi, stages as stagesApi } from './api'
-import type { UserRead, RevenueCategoryRead, LocationRead, StageRead } from './api/types'
+import { users as usersApi, revenueStreams, revenueCategories, revenueSubcategories, locations as locationsApi, stages as stagesApi } from './api'
+import type { UserRead, RevenueCategoryRead, RevenueSubcategoryRead, LocationRead, StageRead } from './api/types'
 
 type StepKey = 'operatorResidence' | 'ownerVehicle' | 'operation' | 'contact'
 
@@ -102,6 +102,7 @@ export function RegisterApp() {
   const [village, setVillage] = useState('')
 
   const [locationDistricts, setLocationDistricts] = useState<string[]>([])
+  const [locationRows, setLocationRows] = useState<LocationRead[]>([])
   const [residenceCounties, setResidenceCounties] = useState<string[]>([])
   const [residenceSubcounties, setResidenceSubcounties] = useState<string[]>([])
   const [residenceParishes, setResidenceParishes] = useState<string[]>([])
@@ -132,9 +133,7 @@ export function RegisterApp() {
   const [contactEmail, setContactEmail] = useState('')
 
   // Vehicle step
-  const [vehicleType, setVehicleType] = useState<
-    'minivan' | 'motorbike' | 'bus' | 'tricycle' | ''
-  >('')
+  const [vehicleType, setVehicleType] = useState('')
   const [vehicleRegistration, setVehicleRegistration] = useState('')
   const [vehicleMakeModel, setVehicleMakeModel] = useState('')
   const [vehicleColor, setVehicleColor] = useState('')
@@ -184,6 +183,9 @@ export function RegisterApp() {
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null)
 
   const [categories, setCategories] = useState<RevenueCategoryRead[]>([])
+  const [vehicleSubcategories, setVehicleSubcategories] = useState<
+    RevenueSubcategoryRead[]
+  >([])
   const [submitLoading, setSubmitLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -215,7 +217,13 @@ export function RegisterApp() {
   // Load categories for submit (category_id mapping)
   useEffect(() => {
     revenueCategories.list().then(setCategories).catch(() => setCategories([]))
+    revenueSubcategories.list().then(setVehicleSubcategories).catch(() => setVehicleSubcategories([]))
   }, [])
+
+  const selectedVehicleSubcategory = useMemo(
+    () => vehicleSubcategories.find((s) => s.id === vehicleType) ?? null,
+    [vehicleSubcategories, vehicleType],
+  )
 
   function sortLocationsFirst(items: string[], first: string[]): string[] {
     const copy = [...items]
@@ -230,9 +238,35 @@ export function RegisterApp() {
     return copy
   }
 
+  const uniqueSorted = (items: string[]): string[] =>
+    sortLocationsFirst(
+      Array.from(new Set(items.filter((v) => (v || '').trim() !== ''))),
+      ['Kampala', 'Wakiso'],
+    )
+
   // Load location districts on mount
   useEffect(() => {
-    locationsApi.districts().then((d) => setLocationDistricts(sortLocationsFirst(d, ['Kampala', 'Wakiso']))).catch(() => setLocationDistricts([]))
+    locationsApi
+      .districts()
+      .then(async (d) => {
+        const sorted = uniqueSorted(d)
+        if (sorted.length > 0) {
+          setLocationDistricts(sorted)
+          return
+        }
+        const rows = await locationsApi.all()
+        setLocationRows(rows)
+        setLocationDistricts(uniqueSorted(rows.map((r) => r.district)))
+      })
+      .catch(async () => {
+        try {
+          const rows = await locationsApi.all()
+          setLocationRows(rows)
+          setLocationDistricts(uniqueSorted(rows.map((r) => r.district)))
+        } catch {
+          setLocationDistricts([])
+        }
+      })
   }, [])
 
   // Load residence counties when district changes
@@ -242,8 +276,32 @@ export function RegisterApp() {
       return
     }
     const d = district.trim()
-    locationsApi.counties(d).then((c) => setResidenceCounties(sortLocationsFirst(c, ['Kampala', 'Wakiso']))).catch(() => setResidenceCounties([]))
-  }, [district])
+    locationsApi
+      .counties(d)
+      .then((c) => {
+        const sorted = uniqueSorted(c)
+        if (sorted.length > 0) {
+          setResidenceCounties(sorted)
+          return
+        }
+        setResidenceCounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.district === d)
+              .map((r) => r.county),
+          ),
+        )
+      })
+      .catch(() =>
+        setResidenceCounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.district === d)
+              .map((r) => r.county),
+          ),
+        ),
+      )
+  }, [district, locationRows])
 
   // Load residence subcounties when county changes (GET /locations/subcounties/{county})
   useEffect(() => {
@@ -252,24 +310,98 @@ export function RegisterApp() {
       return
     }
     const c = county.trim()
-    locationsApi.subcounties(c).then((s) => setResidenceSubcounties(sortLocationsFirst(s, ['Kampala', 'Wakiso']))).catch(() => setResidenceSubcounties([]))
-  }, [county])
+    locationsApi
+      .subcounties(c)
+      .then((s) => {
+        const sorted = uniqueSorted(s)
+        if (sorted.length > 0) {
+          setResidenceSubcounties(sorted)
+          return
+        }
+        setResidenceSubcounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.county === c)
+              .map((r) => r.subcounty),
+          ),
+        )
+      })
+      .catch(() =>
+        setResidenceSubcounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.county === c)
+              .map((r) => r.subcounty),
+          ),
+        ),
+      )
+  }, [county, locationRows])
 
   useEffect(() => {
     if (!subcounty?.trim()) {
       setResidenceParishes([])
       return
     }
-    locationsApi.parishes(subcounty.trim()).then((p) => setResidenceParishes(sortLocationsFirst(p, ['Kampala', 'Wakiso']))).catch(() => setResidenceParishes([]))
-  }, [subcounty])
+    const selected = subcounty.trim()
+    locationsApi
+      .parishes(selected)
+      .then((p) => {
+        const sorted = uniqueSorted(p)
+        if (sorted.length > 0) {
+          setResidenceParishes(sorted)
+          return
+        }
+        setResidenceParishes(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.subcounty === selected)
+              .map((r) => r.parish),
+          ),
+        )
+      })
+      .catch(() =>
+        setResidenceParishes(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.subcounty === selected)
+              .map((r) => r.parish),
+          ),
+        ),
+      )
+  }, [subcounty, locationRows])
 
   useEffect(() => {
     if (!parish?.trim()) {
       setResidenceVillages([])
       return
     }
-    locationsApi.villages(parish.trim()).then((v) => setResidenceVillages(sortLocationsFirst(v, ['Kampala', 'Wakiso']))).catch(() => setResidenceVillages([]))
-  }, [parish])
+    const selected = parish.trim()
+    locationsApi
+      .villages(selected)
+      .then((v) => {
+        const sorted = uniqueSorted(v)
+        if (sorted.length > 0) {
+          setResidenceVillages(sorted)
+          return
+        }
+        setResidenceVillages(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.parish === selected)
+              .map((r) => r.village),
+          ),
+        )
+      })
+      .catch(() =>
+        setResidenceVillages(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.parish === selected)
+              .map((r) => r.village),
+          ),
+        ),
+      )
+  }, [parish, locationRows])
 
   // Load operator counties when opDistrict changes
   useEffect(() => {
@@ -278,8 +410,32 @@ export function RegisterApp() {
       return
     }
     const d = opDistrict.trim()
-    locationsApi.counties(d).then((c) => setOperatorCounties(sortLocationsFirst(c, ['Kampala', 'Wakiso']))).catch(() => setOperatorCounties([]))
-  }, [opDistrict])
+    locationsApi
+      .counties(d)
+      .then((c) => {
+        const sorted = uniqueSorted(c)
+        if (sorted.length > 0) {
+          setOperatorCounties(sorted)
+          return
+        }
+        setOperatorCounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.district === d)
+              .map((r) => r.county),
+          ),
+        )
+      })
+      .catch(() =>
+        setOperatorCounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.district === d)
+              .map((r) => r.county),
+          ),
+        ),
+      )
+  }, [opDistrict, locationRows])
 
   // Load operator subcounties when opCounty changes (GET /locations/subcounties/{county})
   useEffect(() => {
@@ -288,24 +444,98 @@ export function RegisterApp() {
       return
     }
     const c = opCounty.trim()
-    locationsApi.subcounties(c).then((s) => setOperatorSubcounties(sortLocationsFirst(s, ['Kampala', 'Wakiso']))).catch(() => setOperatorSubcounties([]))
-  }, [opCounty])
+    locationsApi
+      .subcounties(c)
+      .then((s) => {
+        const sorted = uniqueSorted(s)
+        if (sorted.length > 0) {
+          setOperatorSubcounties(sorted)
+          return
+        }
+        setOperatorSubcounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.county === c)
+              .map((r) => r.subcounty),
+          ),
+        )
+      })
+      .catch(() =>
+        setOperatorSubcounties(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.county === c)
+              .map((r) => r.subcounty),
+          ),
+        ),
+      )
+  }, [opCounty, locationRows])
 
   useEffect(() => {
     if (!opSubcounty?.trim()) {
       setOperatorParishes([])
       return
     }
-    locationsApi.parishes(opSubcounty.trim()).then((p) => setOperatorParishes(sortLocationsFirst(p, ['Kampala', 'Wakiso']))).catch(() => setOperatorParishes([]))
-  }, [opSubcounty])
+    const selected = opSubcounty.trim()
+    locationsApi
+      .parishes(selected)
+      .then((p) => {
+        const sorted = uniqueSorted(p)
+        if (sorted.length > 0) {
+          setOperatorParishes(sorted)
+          return
+        }
+        setOperatorParishes(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.subcounty === selected)
+              .map((r) => r.parish),
+          ),
+        )
+      })
+      .catch(() =>
+        setOperatorParishes(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.subcounty === selected)
+              .map((r) => r.parish),
+          ),
+        ),
+      )
+  }, [opSubcounty, locationRows])
 
   useEffect(() => {
     if (!opParish?.trim()) {
       setOperatorVillages([])
       return
     }
-    locationsApi.villages(opParish.trim()).then((v) => setOperatorVillages(sortLocationsFirst(v, ['Kampala', 'Wakiso']))).catch(() => setOperatorVillages([]))
-  }, [opParish])
+    const selected = opParish.trim()
+    locationsApi
+      .villages(selected)
+      .then((v) => {
+        const sorted = uniqueSorted(v)
+        if (sorted.length > 0) {
+          setOperatorVillages(sorted)
+          return
+        }
+        setOperatorVillages(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.parish === selected)
+              .map((r) => r.village),
+          ),
+        )
+      })
+      .catch(() =>
+        setOperatorVillages(
+          uniqueSorted(
+            locationRows
+              .filter((r) => r.parish === selected)
+              .map((r) => r.village),
+          ),
+        ),
+      )
+  }, [opParish, locationRows])
 
   // When parish not selected: debounced village search via locations/search/villages (residence)
   useEffect(() => {
@@ -476,16 +706,15 @@ export function RegisterApp() {
     setSubmitError(null)
     setSubmitLoading(true)
     try {
-      const category = categories.find(
-        (c) =>
-          c.name.toLowerCase().includes(vehicleType) ||
-          c.code.toLowerCase() === vehicleType.slice(0, 4),
-      )
       const categoryId =
-        category?.id ??
+        selectedVehicleSubcategory?.category_id ??
         (categories.length > 0 ? categories[0].id : '')
       if (!categoryId) {
         setSubmitError('No vehicle category available. Please try again later.')
+        return
+      }
+      if (!selectedVehicleSubcategory?.id) {
+        setSubmitError('Please select a vehicle type.')
         return
       }
       const ownerFullName = isIndividual
@@ -504,6 +733,7 @@ export function RegisterApp() {
       await revenueStreams.onboard({
         name: vehicleRegistration || vehicleMakeModel || 'Vehicle',
         category_id: categoryId,
+        subcategory_id: selectedVehicleSubcategory.id,
         reg_no: vehicleRegistration || undefined,
         vin: vehicleVin || undefined,
         color: vehicleColor || undefined,
@@ -1154,15 +1384,14 @@ export function RegisterApp() {
                       <select
                         className="form-select custom-select"
                         value={vehicleType}
-                        onChange={(event) =>
-                          setVehicleType(event.target.value as 'minivan' | 'motorbike' | 'bus' | 'tricycle' | '')
-                        }
+                        onChange={(event) => setVehicleType(event.target.value)}
                       >
                         <option value="">Select vehicle type</option>
-                        <option value="minivan">Minivan</option>
-                        <option value="motorbike">Motorbike</option>
-                        <option value="bus">Bus</option>
-                        <option value="tricycle">Tricycle (Tuk Tuk)</option>
+                        {vehicleSubcategories.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1465,7 +1694,7 @@ export function RegisterApp() {
                     <h3 className="summary-section-title">Vehicle details</h3>
                     <dl className="summary-list">
                       <dt>Type</dt>
-                      <dd>{vehicleType ? vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1) : '—'}</dd>
+                      <dd>{selectedVehicleSubcategory?.name || '—'}</dd>
                       <dt>Registration</dt>
                       <dd>{vehicleRegistration || '—'}</dd>
                       <dt>Make &amp; model</dt>

@@ -1,5 +1,13 @@
 /* DMMP API v2 types (from OpenAPI) */
 
+export type PaginatedResponse<T> = {
+  items: T[]
+  total: number
+  page: number
+  size: number
+  pages: number
+}
+
 export type StageRead = {
   display_name: string
   registered_name?: string | null
@@ -30,6 +38,37 @@ export type StageCreate = {
 }
 
 export type StageUpdate = Partial<StageCreate>
+
+export type RouteChartRead = {
+  id: string
+  name: string
+  start_address: string
+  start_lat: number
+  start_long: number
+  end_address: string
+  end_lat: number
+  end_long: number
+  length: number
+  revenue_subcategory_id: string
+  datecreated: string
+  createdby?: string | null
+  dateupdated?: string | null
+  updatedby?: string | null
+}
+
+export type RouteChartCreate = {
+  name: string
+  start_address: string
+  start_lat: number
+  start_long: number
+  end_address: string
+  end_lat: number
+  end_long: number
+  length: number
+  revenue_subcategory_id: string
+}
+
+export type RouteChartUpdate = Partial<RouteChartCreate>
 
 export type LocationRead = {
   district: string
@@ -102,6 +141,7 @@ export type RoleRead = {
   name: string
   description?: string | null
   is_system: boolean
+  permissions?: string[] | null
 }
 
 export type RevenueCategoryRead = {
@@ -162,6 +202,19 @@ export type RevenueSubscriptionRead = {
   id: string
   is_active: boolean
 }
+
+export type RevenueSubscriptionCreate = {
+  category_id: string
+  revenue_stream_id?: string | null
+  amount: number
+  currency?: string | null
+  frequency: string
+  frequency_days?: number | null
+  start_date?: string | null
+  end_date?: string | null
+}
+
+export type RevenueSubscriptionUpdate = Partial<RevenueSubscriptionCreate>
 
 /** Response from GET /revenue/streams (aligned with OpenAPI RevenueStreamRead). */
 export type RevenueStreamRead = {
@@ -332,7 +385,10 @@ export type LoginRole = {
   id: string
   name: string
   description?: string | null
+  permissions?: string[] | null
 }
+
+export type PermissionMap = Record<string, boolean>
 
 export type LoginResponse = {
   access_token: string
@@ -340,7 +396,7 @@ export type LoginResponse = {
   token_type: string
   user: LoginUser
   role?: LoginRole | null
-  permissions?: string[] | null
+  permissions?: string[] | PermissionMap | null
 }
 
 export type UserLogin = {

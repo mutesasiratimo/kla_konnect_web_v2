@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import type { RoleRead, UserCreate, UserRead, UserUpdate } from '../../api/types'
 import { users as usersApi } from '../../api/endpoints'
+import { getSession } from '../../api/client'
 import { DashboardDialog } from '../DashboardDialog'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface UserListProps {
   users: UserRead[]
@@ -70,11 +72,17 @@ export const UserList: React.FC<UserListProps> = ({
   const [viewTarget, setViewTarget] = useState<UserRead | null>(null)
   const [filterText, setFilterText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const roleNameById = useMemo(
     () => Object.fromEntries(roles.map((r) => [r.id, r.name])),
     [roles],
   )
+  const canManageRoles = useMemo(() => {
+    const permissions = getSession()?.permissions ?? null
+    return Boolean(permissions?.all || permissions?.['users:manage_roles'])
+  }, [])
 
   const filteredUsers = useMemo(() => {
     const q = filterText.trim().toLowerCase()
@@ -91,6 +99,17 @@ export const UserList: React.FC<UserListProps> = ({
       return blob.includes(q)
     })
   }, [users, filterText])
+
+  useEffect(() => {
+    setPage(1)
+  }, [filterText, users.length])
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedUsers = filteredUsers.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -148,9 +167,11 @@ export const UserList: React.FC<UserListProps> = ({
       phone: editForm.phone.trim() || null,
       id_type: editForm.id_type.trim() || null,
       id_number: editForm.id_number.trim() || null,
-      role_id: editForm.role_id || null,
       is_active: editForm.is_active,
       is_verified: editForm.is_verified,
+    }
+    if (canManageRoles) {
+      body.role_id = editForm.role_id || null
     }
     setSaving(true)
     try {
@@ -350,23 +371,38 @@ export const UserList: React.FC<UserListProps> = ({
                 }
               />
             </label>
-            <label className="dashboard-dialog-field">
-              <span>Role</span>
-              <select
-                className="dashboard-dialog-select"
-                value={editForm.role_id}
-                onChange={(e) =>
-                  setEditForm((f) => (f ? { ...f, role_id: e.target.value } : f))
-                }
-              >
-                <option value="">— None —</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {canManageRoles ? (
+              <label className="dashboard-dialog-field">
+                <span>Role</span>
+                <select
+                  className="dashboard-dialog-select"
+                  value={editForm.role_id}
+                  onChange={(e) =>
+                    setEditForm((f) => (f ? { ...f, role_id: e.target.value } : f))
+                  }
+                >
+                  <option value="">— None —</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="dashboard-dialog-field">
+                <span>Role</span>
+                <input
+                  value={
+                    editForm.role_id
+                      ? roleNameById[editForm.role_id] ?? editForm.role_id
+                      : '—'
+                  }
+                  readOnly
+                  disabled
+                />
+              </label>
+            )}
             <div
               style={{
                 display: 'flex',
@@ -482,7 +518,7 @@ export const UserList: React.FC<UserListProps> = ({
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.map((row) => (
+            {pagedUsers.map((row) => (
               <tr key={row.id}>
                 <td>{displayName(row)}</td>
                 <td>{row.id_number ?? '—'}</td>
@@ -546,6 +582,17 @@ export const UserList: React.FC<UserListProps> = ({
               : 'No users match this filter.'}
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredUsers.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

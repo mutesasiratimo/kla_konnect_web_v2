@@ -8,6 +8,7 @@ import type {
 } from '../../api/types'
 import { revenueStreams as api } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface RevenueStreamsCrudListProps {
   streams: RevenueStreamRead[]
@@ -77,6 +78,8 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [subcategoryFilter, setSubcategoryFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const parentNameById = useMemo(
     () => Object.fromEntries(parentCategories.map((c) => [c.id, c.name])),
@@ -140,6 +143,12 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
     subNameById,
     stageNameById,
   ])
+  const totalPages = Math.max(1, Math.ceil(filteredStreams.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedStreams = filteredStreams.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -454,7 +463,7 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
               </tr>
             </thead>
             <tbody>
-              {filteredStreams.map((row) => (
+              {pagedStreams.map((row) => (
                 <tr key={row.id}>
                   <td>{row.name}</td>
                   <td>{row.reg_no ?? '—'}</td>
@@ -517,6 +526,17 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredStreams.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
 
       <DashboardDialog

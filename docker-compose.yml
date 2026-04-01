@@ -5,9 +5,10 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
     image: drammp-web-v2:latest
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "${WEB_PORT:-80}:80"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost/healthz || exit 1"]

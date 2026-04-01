@@ -211,8 +211,11 @@
   width: 100%;
   border-radius: 8px;
   border: none;
-  padding: 12px 20px;
-  font-size: 0.95rem;
+  padding: 8px 14px;
+  min-height: 36px;
+  box-sizing: border-box;
+  line-height: 1.2;
+  font-size: 0.9rem;
   font-weight: 600;
   background: #020617;
   color: #f9fafb;
@@ -272,7 +275,10 @@
   width: 100%;
   border-radius: 8px;
   border: 1px solid #020617;
-  padding: 10px 18px;
+  padding: 8px 14px;
+  min-height: 36px;
+  box-sizing: border-box;
+  line-height: 1.2;
   font-size: 0.9rem;
   font-weight: 500;
   background: transparent;

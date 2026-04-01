@@ -3,6 +3,7 @@ import type { IncidentCategoryRead } from '../../api/types'
 import { incidentCategories as categoryApi } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface CategoryProps {
   categories: IncidentCategoryRead[]
@@ -45,6 +46,8 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
   const [editForm, setEditForm] = useState<FormState>(emptyForm)
   const [viewTarget, setViewTarget] = useState<IncidentCategoryRead | null>(null)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const iconBtn: React.CSSProperties = { width: 30, height: 30, padding: 0 }
 
@@ -52,6 +55,12 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
   const parentOptions = categories.filter((c) => c.id !== editingId)
   const parentNameById = Object.fromEntries(
     categories.map((c) => [c.id, c.name]),
+  )
+  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedCategories = categories.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
   )
 
   const closeCreate = () => {
@@ -344,7 +353,7 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
             </tr>
           </thead>
           <tbody>
-            {categories.map((cat) => (
+            {pagedCategories.map((cat) => (
               <tr key={cat.id}>
                 <td>
                   {cat.image ? (
@@ -422,6 +431,17 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
             No categories yet. Create one to classify incidents.
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={categories.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

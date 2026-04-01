@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   IncidentDetailRead,
   IncidentRead,
@@ -7,6 +7,7 @@ import type {
 import { incidents as incidentsApi, uploads } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { PendingMediaDropzone, uploadKindForFile } from '../FileUploadDropzone'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface ListProps {
   data: IncidentRead[]
@@ -51,6 +52,17 @@ export const IncidentList: React.FC<ListProps> = ({
   const [newDescription, setNewDescription] = useState('')
   const [newEmergency, setNewEmergency] = useState(false)
   const [newAddress, setNewAddress] = useState('')
+  const [newAddressLat, setNewAddressLat] = useState<number | null>(null)
+  const [newAddressLong, setNewAddressLong] = useState<number | null>(null)
+  const [newStartDate, setNewStartDate] = useState('')
+  const [newEndDate, setNewEndDate] = useState('')
+  const [newFullClosure, setNewFullClosure] = useState(false)
+  const [addressSuggestions, setAddressSuggestions] = useState<
+    { placeId: string; description: string }[]
+  >([])
+  const [placesReady, setPlacesReady] = useState(false)
+  const autocompleteServiceRef = useRef<any>(null)
+  const placesServiceRef = useRef<any>(null)
   const [editTarget, setEditTarget] = useState<IncidentRead | null>(null)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
@@ -60,6 +72,11 @@ export const IncidentList: React.FC<ListProps> = ({
   const [viewLoading, setViewLoading] = useState(false)
   const [viewData, setViewData] = useState<IncidentDetailRead | null>(null)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(data.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedData = data.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const closeCreate = () => {
     setCreateOpen(false)
@@ -67,8 +84,119 @@ export const IncidentList: React.FC<ListProps> = ({
     setNewDescription('')
     setNewEmergency(false)
     setNewAddress('')
+    setNewAddressLat(null)
+    setNewAddressLong(null)
+    setNewStartDate('')
+    setNewEndDate('')
+    setNewFullClosure(false)
+    setAddressSuggestions([])
     setNewCategoryId(categoryOptions[0]?.id ?? '')
     setPendingAttachments([])
+  }
+
+  const selectedCategoryName = useMemo(
+    () =>
+      categoryOptions.find((c) => c.id === newCategoryId)?.name?.toLowerCase() ?? '',
+    [categoryOptions, newCategoryId],
+  )
+  const isRoadCategory = createAsCityAlert && selectedCategoryName.includes('road')
+
+  useEffect(() => {
+    if (!isRoadCategory) setNewFullClosure(false)
+  }, [isRoadCategory])
+
+  useEffect(() => {
+    if (!createAsCityAlert) return
+    const key = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim()
+    if (!key) return
+
+    const w = window as any
+    if (w.google?.maps?.places) {
+      setPlacesReady(true)
+      return
+    }
+
+    const existing = document.querySelector(
+      'script[data-google-places-loader="true"]',
+    ) as HTMLScriptElement | null
+    if (existing) {
+      existing.addEventListener('load', () => setPlacesReady(true), { once: true })
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      key,
+    )}&libraries=places`
+    script.async = true
+    script.defer = true
+    script.setAttribute('data-google-places-loader', 'true')
+    script.addEventListener('load', () => setPlacesReady(true), { once: true })
+    script.addEventListener(
+      'error',
+      () => console.error('Google Places script failed to load'),
+      { once: true },
+    )
+    document.head.appendChild(script)
+  }, [createAsCityAlert])
+
+  useEffect(() => {
+    if (!createAsCityAlert || !placesReady) return
+    const w = window as any
+    if (!w.google?.maps?.places) return
+    if (!autocompleteServiceRef.current) {
+      autocompleteServiceRef.current = new w.google.maps.places.AutocompleteService()
+    }
+    if (!placesServiceRef.current) {
+      placesServiceRef.current = new w.google.maps.places.PlacesService(
+        document.createElement('div'),
+      )
+    }
+  }, [createAsCityAlert, placesReady])
+
+  useEffect(() => {
+    if (!createAsCityAlert || !placesReady) return
+    const query = newAddress.trim()
+    if (query.length < 3) {
+      setAddressSuggestions([])
+      return
+    }
+    const svc = autocompleteServiceRef.current
+    if (!svc) return
+    const t = window.setTimeout(() => {
+      svc.getPlacePredictions(
+        { input: query, componentRestrictions: { country: 'ug' } },
+        (predictions: any[] | null) => {
+          setAddressSuggestions(
+            (predictions ?? []).slice(0, 6).map((p: any) => ({
+              placeId: p.place_id,
+              description: p.description,
+            })),
+          )
+        },
+      )
+    }, 220)
+    return () => window.clearTimeout(t)
+  }, [newAddress, createAsCityAlert, placesReady])
+
+  const applySuggestion = (placeId: string, description: string) => {
+    setNewAddress(description)
+    setAddressSuggestions([])
+    const svc = placesServiceRef.current
+    if (!svc) return
+    svc.getDetails(
+      { placeId, fields: ['geometry', 'formatted_address'] },
+      (result: any, status: string) => {
+        const w = window as any
+        if (status !== w.google?.maps?.places?.PlacesServiceStatus?.OK || !result) return
+        const loc = result.geometry?.location
+        if (loc) {
+          setNewAddressLat(typeof loc.lat === 'function' ? loc.lat() : null)
+          setNewAddressLong(typeof loc.lng === 'function' ? loc.lng() : null)
+        }
+        if (result.formatted_address) setNewAddress(result.formatted_address)
+      },
+    )
   }
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -83,6 +211,11 @@ export const IncidentList: React.FC<ListProps> = ({
         isemergency: newEmergency,
         iscityreport: createAsCityAlert,
         address: newAddress.trim() || null,
+        addresslat: newAddressLat,
+        addresslong: newAddressLong,
+        startdate: createAsCityAlert && newStartDate ? newStartDate : null,
+        enddate: createAsCityAlert && newEndDate ? newEndDate : null,
+        fulldisruption: isRoadCategory ? newFullClosure : false,
       })
       for (let i = 0; i < pendingAttachments.length; i++) {
         const file = pendingAttachments[i]
@@ -223,18 +356,107 @@ export const IncidentList: React.FC<ListProps> = ({
             <span>Address</span>
             <input
               value={newAddress}
-              onChange={(e) => setNewAddress(e.target.value)}
+              onChange={(e) => {
+                setNewAddress(e.target.value)
+                setNewAddressLat(null)
+                setNewAddressLong(null)
+              }}
               autoComplete="off"
             />
+            {createAsCityAlert && addressSuggestions.length > 0 && (
+              <div
+                style={{
+                  border: '1px solid #dbe4f0',
+                  borderRadius: 8,
+                  marginTop: 6,
+                  overflow: 'hidden',
+                  background: '#fff',
+                }}
+              >
+                {addressSuggestions.map((s) => (
+                  <button
+                    key={s.placeId}
+                    type="button"
+                    className="secondary-button"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      border: 0,
+                      borderRadius: 0,
+                      background: 'transparent',
+                      padding: '8px 10px',
+                    }}
+                    onClick={() => applySuggestion(s.placeId, s.description)}
+                  >
+                    {s.description}
+                  </button>
+                ))}
+              </div>
+            )}
+            {createAsCityAlert && newAddressLat != null && newAddressLong != null && (
+              <small style={{ color: 'var(--dashboard-muted, #64748b)' }}>
+                Coordinates: {newAddressLat.toFixed(6)}, {newAddressLong.toFixed(6)}
+              </small>
+            )}
           </label>
-          <label className="dashboard-dialog-field" style={{ flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
-            <input
-              type="checkbox"
-              checked={newEmergency}
-              onChange={(e) => setNewEmergency(e.target.checked)}
-            />
-            <span style={{ margin: 0 }}>Emergency</span>
-          </label>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: createAsCityAlert ? '1fr 1fr auto auto' : 'auto',
+              gap: '12px',
+              alignItems: 'end',
+            }}
+          >
+            {createAsCityAlert && (
+              <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+                <span>Start date</span>
+                <input
+                  type="datetime-local"
+                  value={newStartDate}
+                  onChange={(e) => setNewStartDate(e.target.value)}
+                />
+              </label>
+            )}
+            {createAsCityAlert && (
+              <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+                <span>End date</span>
+                <input
+                  type="datetime-local"
+                  value={newEndDate}
+                  onChange={(e) => setNewEndDate(e.target.value)}
+                />
+              </label>
+            )}
+            <label
+              className="dashboard-dialog-field"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: '10px', margin: 0 }}
+            >
+              <input
+                type="checkbox"
+                checked={newEmergency}
+                onChange={(e) => setNewEmergency(e.target.checked)}
+              />
+              <span style={{ margin: 0 }}>Emergency</span>
+            </label>
+            {isRoadCategory && (
+              <label
+                className="dashboard-dialog-field"
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: '10px',
+                  margin: 0,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newFullClosure}
+                  onChange={(e) => setNewFullClosure(e.target.checked)}
+                />
+                <span style={{ margin: 0 }}>Full closure</span>
+              </label>
+            )}
+          </div>
           <PendingMediaDropzone
             label="Attachments (optional)"
             files={pendingAttachments}
@@ -323,6 +545,9 @@ export const IncidentList: React.FC<ListProps> = ({
                 <strong>Address:</strong> {viewData.address || 'Not specified'}
               </p>
               <p>
+                <strong>Source:</strong> {viewData.iscityreport ? 'KCCA' : 'Public'}
+              </p>
+              <p>
                 <strong>Description:</strong> {viewData.description || '—'}
               </p>
               <p>
@@ -352,7 +577,7 @@ export const IncidentList: React.FC<ListProps> = ({
             </tr>
           </thead>
           <tbody>
-            {data.map((item) => (
+            {pagedData.map((item) => (
               <tr key={item.id}>
                 <td>
                   <div style={{ fontWeight: 600 }}>{item.name}</div>
@@ -424,6 +649,17 @@ export const IncidentList: React.FC<ListProps> = ({
               : 'No incidents found for the selected filters.'}
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={data.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

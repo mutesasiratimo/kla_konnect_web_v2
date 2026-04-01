@@ -8,6 +8,7 @@ import { newsArticles as api } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
 import { getSession } from '../../api/client'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface NewsListProps {
   articles: NewsArticleRead[]
@@ -48,10 +49,18 @@ export const NewsList: React.FC<NewsListProps> = ({
     emptyForm(categories[0]?.id ?? ''),
   )
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const categoryNameById = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.id, c.name])),
     [categories],
+  )
+  const totalPages = Math.max(1, Math.ceil(articles.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedArticles = articles.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
   )
 
   const resetAndOpenCreate = () => {
@@ -362,7 +371,7 @@ export const NewsList: React.FC<NewsListProps> = ({
             </tr>
           </thead>
           <tbody>
-            {articles.map((row) => (
+            {pagedArticles.map((row) => (
               <tr key={row.id}>
                 <td>{row.title}</td>
                 <td>{categoryNameById[row.category_id] || '—'}</td>
@@ -411,6 +420,17 @@ export const NewsList: React.FC<NewsListProps> = ({
             No news articles yet.
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={articles.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )

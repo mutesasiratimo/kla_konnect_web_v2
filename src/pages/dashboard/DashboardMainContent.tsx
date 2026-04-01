@@ -4,6 +4,8 @@ import type {
   NewsArticleRead,
   NewsCategoryRead,
   RevenueCategoryRead,
+  RevenueSubscriptionRead,
+  RouteChartRead,
   RevenueStreamRead,
   RevenueSubcategoryRead,
   RoleRead,
@@ -11,12 +13,9 @@ import type {
   UserRead,
 } from '../../api/types'
 import type { DashboardPage } from './navConfig'
-import type { DonutSegment, IncidentDateRangeFilter } from './pageTypes'
+import type { IncidentDateRangeFilter } from './pageTypes'
 import type {
-  RouteRecord,
-  StageRecord,
   SubscriptionCategoryRow,
-  VehicleRecord,
 } from './mockData'
 import { DashboardHomePage } from './DashboardHomePage'
 import { IncidentsSection } from './IncidentsSection'
@@ -34,7 +33,6 @@ import { SettingsPageView } from './SettingsPageView'
 export interface DashboardMainContentProps {
   currentPage: DashboardPage
   userName: string
-  donutSegments: DonutSegment[]
   incidentsLoadError: string | null
   incidentDateFilter: IncidentDateRangeFilter
   setIncidentDateFilter: (v: IncidentDateRangeFilter) => void
@@ -45,12 +43,22 @@ export interface DashboardMainContentProps {
   pendingIncidentsCount: number
   liveIncidentsCount: number
   resolvedIncidentsCount: number
+  archivedIncidentsCount: number
+  dashboardPendingIncidentsCount?: number
+  dashboardLiveIncidentsCount?: number
+  dashboardResolvedIncidentsCount?: number
+  dashboardArchivedIncidentsCount?: number
+  dashboardUsersCount?: number
+  dashboardVehiclesTotalCount?: number
+  dashboardVehiclesCompliantCount?: number
+  dashboardVehiclesInReviewCount?: number
   avgResolutionHours: number | null
   incidentData: IncidentRead[]
   incidentRecords: IncidentRead[]
   cityAlertRecords: IncidentRead[]
   catData: IncidentCategoryRead[]
   loadIncidents: () => void | Promise<void>
+  loadCityAlerts: () => void | Promise<void>
   loadCategories: () => void | Promise<void>
   newsLoadError: string | null
   newsData: NewsArticleRead[]
@@ -59,37 +67,26 @@ export interface DashboardMainContentProps {
   loadNewsCategories: () => void | Promise<void>
   showNewVehicle: boolean
   setShowNewVehicle: (v: boolean) => void
-  vehicleCategoryFilter: string
-  setVehicleCategoryFilter: (v: string) => void
-  vehicleStageFilter: string
-  setVehicleStageFilter: (v: string) => void
-  vehicleDivisionFilter: string
-  setVehicleDivisionFilter: (v: string) => void
-  vehiclePaymentFilter: string
-  setVehiclePaymentFilter: (v: string) => void
-  vehiclePermitFilter: string
-  setVehiclePermitFilter: (v: string) => void
-  vehicleSearch: string
-  setVehicleSearch: (v: string) => void
-  pagedVehicles: VehicleRecord[]
-  currentVehiclePage: number
-  totalVehiclePages: number
-  pageSize: number
-  filteredVehiclesLength: number
-  goToVehiclePage: (page: number) => void
-  selectedVehicle: VehicleRecord | null
-  setSelectedVehicle: (v: VehicleRecord | null) => void
+  vehicleStats: {
+    total: number
+    compliant: number
+    inReview: number
+  }
+  onViewIncidentDetails: () => void
   streamsLoadError: string | null
   revenueStreams: RevenueStreamRead[]
   vehicleStreamParentFilter: string
   setVehicleStreamParentFilter: (id: string) => void
   stageData: StageRead[]
   onRefreshStreams: () => void | Promise<void>
-  sampleStages: StageRecord[]
-  sampleRoutes: RouteRecord[]
+  onRefreshStages: () => void | Promise<void>
+  routeChartData: RouteChartRead[]
+  routeChartsLoadError: string | null
+  onRefreshRouteCharts: () => void | Promise<void>
   subscriptionsByCategory: SubscriptionCategoryRow[]
   revenueLoadError: string | null
   revenueCategoryData: RevenueCategoryRead[]
+  revenueSubscriptionData: RevenueSubscriptionRead[]
   revenueSubcategoryData: RevenueSubcategoryRead[]
   revenueSubParentFilter: string
   setRevenueSubParentFilter: (id: string) => void
@@ -99,21 +96,68 @@ export interface DashboardMainContentProps {
   roleData: RoleRead[]
   onRefreshUsers: () => void | Promise<void>
   onRefreshParentCategories: () => void | Promise<void>
+  onRefreshSubscriptions: () => void | Promise<void>
+  usersActiveCount?: number
+  incidentsVsTimeData?: {
+    monthly: { label: string; value: number }[]
+    quarterly: { label: string; value: number }[]
+    annual: { label: string; value: number }[]
+  }
+  incidentsByCategoryData?: { name: string; value: number }[]
+  analyticsLoading?: boolean
 }
 
 export function DashboardMainContent(props: DashboardMainContentProps) {
-  const { currentPage, userName, donutSegments } = props
+  const { currentPage, userName } = props
 
   return (
     <main className="dashboard-content">
       {currentPage === 'dashboard' && (
-        <DashboardHomePage userName={userName} donutSegments={donutSegments} />
+        <DashboardHomePage
+          pendingIncidentsCount={
+            props.dashboardPendingIncidentsCount ?? props.pendingIncidentsCount
+          }
+          liveIncidentsCount={
+            props.dashboardLiveIncidentsCount ?? props.liveIncidentsCount
+          }
+          resolvedIncidentsCount={
+            props.dashboardResolvedIncidentsCount ?? props.resolvedIncidentsCount
+          }
+          archivedIncidentsCount={
+            props.dashboardArchivedIncidentsCount ?? props.archivedIncidentsCount
+          }
+          usersCount={props.dashboardUsersCount ?? props.userData.length}
+          usersActiveCount={props.usersActiveCount}
+          vehiclesTotalCount={
+            props.dashboardVehiclesTotalCount ?? props.vehicleStats.total
+          }
+          vehiclesCompliantCount={
+            props.dashboardVehiclesCompliantCount ?? props.vehicleStats.compliant
+          }
+          vehiclesInReviewCount={
+            props.dashboardVehiclesInReviewCount ?? props.vehicleStats.inReview
+          }
+          onViewIncidentDetails={props.onViewIncidentDetails}
+          recentIncidents={props.incidentRecords.slice(0, 9)}
+          mapIncidents={[
+            ...props.incidentRecords,
+            ...props.cityAlertRecords.filter(
+              (alert) =>
+                !props.incidentRecords.some((incident) => incident.id === alert.id),
+            ),
+          ]}
+          incidentCategories={props.catData}
+          incidentsVsTimeData={props.incidentsVsTimeData}
+          incidentsByCategoryData={props.incidentsByCategoryData}
+          analyticsLoading={props.analyticsLoading}
+        />
       )}
 
       {(currentPage === 'incidents' ||
         currentPage === 'incidents-summary' ||
         currentPage === 'incidents-incidents' ||
         currentPage === 'incidents-city-alerts' ||
+        currentPage === 'city-alerts' ||
         currentPage === 'incidents-categories') && (
         <IncidentsSection
           currentPage={currentPage}
@@ -133,6 +177,7 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
           cityAlertRecords={props.cityAlertRecords}
           catData={props.catData}
           loadIncidents={props.loadIncidents}
+          loadCityAlerts={props.loadCityAlerts}
           loadCategories={props.loadCategories}
         />
       )}
@@ -150,30 +195,10 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
         />
       )}
 
-      {currentPage === 'vehicles' && (
+      {(currentPage === 'vehicles' || currentPage === 'mobility') && (
         <VehiclesPage
           showNewVehicle={props.showNewVehicle}
           setShowNewVehicle={props.setShowNewVehicle}
-          vehicleCategoryFilter={props.vehicleCategoryFilter}
-          setVehicleCategoryFilter={props.setVehicleCategoryFilter}
-          vehicleStageFilter={props.vehicleStageFilter}
-          setVehicleStageFilter={props.setVehicleStageFilter}
-          vehicleDivisionFilter={props.vehicleDivisionFilter}
-          setVehicleDivisionFilter={props.setVehicleDivisionFilter}
-          vehiclePaymentFilter={props.vehiclePaymentFilter}
-          setVehiclePaymentFilter={props.setVehiclePaymentFilter}
-          vehiclePermitFilter={props.vehiclePermitFilter}
-          setVehiclePermitFilter={props.setVehiclePermitFilter}
-          vehicleSearch={props.vehicleSearch}
-          setVehicleSearch={props.setVehicleSearch}
-          pagedVehicles={props.pagedVehicles}
-          currentVehiclePage={props.currentVehiclePage}
-          totalVehiclePages={props.totalVehiclePages}
-          pageSize={props.pageSize}
-          filteredVehiclesLength={props.filteredVehiclesLength}
-          goToVehiclePage={props.goToVehiclePage}
-          selectedVehicle={props.selectedVehicle}
-          setSelectedVehicle={props.setSelectedVehicle}
           streamsLoadError={props.streamsLoadError}
           revenueStreams={props.revenueStreams}
           revenueCategoryData={props.revenueCategoryData}
@@ -187,7 +212,7 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
       )}
 
       {currentPage === 'stages' && (
-        <StagesPage sampleStages={props.sampleStages} />
+        <StagesPage stageData={props.stageData} onRefreshStages={props.onRefreshStages} />
       )}
 
       {currentPage === 'categories' && (
@@ -202,12 +227,17 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
       )}
 
       {currentPage === 'routes' && (
-        <RoutesPage sampleRoutes={props.sampleRoutes} />
+        <RoutesPage
+          routeChartsData={props.routeChartData}
+          routeChartsLoadError={props.routeChartsLoadError}
+          revenueSubcategoryData={props.revenueSubcategoryData}
+          onRefreshRouteCharts={props.onRefreshRouteCharts}
+        />
       )}
 
       {currentPage === 'reports' && <ReportsPage />}
 
-      {currentPage === 'subscriptions' && (
+      {(currentPage === 'subscriptions' || currentPage === 'revenue-assurance') && (
         <SubscriptionsPage
           subscriptionsByCategory={props.subscriptionsByCategory}
         />
@@ -228,8 +258,12 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
         <SettingsPageView
           userName={userName}
           revenueCategoryData={props.revenueCategoryData}
+          revenueStreamData={props.revenueStreams}
+          revenueSubscriptionData={props.revenueSubscriptionData}
           revenueLoadError={props.revenueLoadError}
           onRefreshParentCategories={props.onRefreshParentCategories}
+          onRefreshSubscriptions={props.onRefreshSubscriptions}
+          roleData={props.roleData}
         />
       )}
     </main>

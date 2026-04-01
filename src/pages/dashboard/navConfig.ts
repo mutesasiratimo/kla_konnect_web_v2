@@ -4,15 +4,18 @@ export type DashboardPage =
   | 'incidents-summary'
   | 'incidents-incidents'
   | 'incidents-city-alerts'
+  | 'city-alerts'
   | 'incidents-categories'
   | 'news'
   | 'news-news'
   | 'news-categories'
+  | 'mobility'
   | 'vehicles'
   | 'stages'
   | 'categories'
   | 'routes'
   | 'reports'
+  | 'revenue-assurance'
   | 'subscriptions'
   | 'enforcements'
   | 'users'
@@ -33,15 +36,18 @@ export const pageToPath: Record<DashboardPage, string> = {
   'incidents-summary': '/incidents/summary',
   'incidents-incidents': '/incidents/incidents',
   'incidents-city-alerts': '/incidents/city-alerts',
+  'city-alerts': '/city-alerts',
   'incidents-categories': '/incidents/categories',
   news: '/news',
   'news-news': '/news/news',
   'news-categories': '/news/categories',
+  mobility: '/mobility',
   vehicles: '/vehicles',
   stages: '/stages',
   categories: '/categories',
   routes: '/routes',
   reports: '/reports',
+  'revenue-assurance': '/revenue-assurance',
   subscriptions: '/subscriptions',
   enforcements: '/enforcements',
   users: '/users',
@@ -57,10 +63,10 @@ export const navItems: NavItem[] = [
     children: [
       { key: 'incidents-summary', label: 'Summary' },
       { key: 'incidents-incidents', label: 'Incidents' },
-      { key: 'incidents-city-alerts', label: 'City Alerts' },
       { key: 'incidents-categories', label: 'Categories' },
     ],
   },
+  { key: 'city-alerts', label: 'City Alerts', icon: 'fa-bullhorn' },
   {
     key: 'news',
     label: 'News',
@@ -70,13 +76,27 @@ export const navItems: NavItem[] = [
       { key: 'news-categories', label: 'Categories' },
     ],
   },
-  { key: 'vehicles', label: 'Vehicles', icon: 'fa-car' },
-  { key: 'stages', label: 'Stages', icon: 'fa-flag' },
-  { key: 'categories', label: 'Categories', icon: 'fa-tags' },
-  { key: 'routes', label: 'Routes', icon: 'fa-map-signs' },
+  {
+    key: 'mobility',
+    label: 'Mobility',
+    icon: 'fa-road',
+    children: [
+      { key: 'vehicles', label: 'Vehicles' },
+      { key: 'categories', label: 'Categories' },
+      { key: 'stages', label: 'Stages' },
+      { key: 'routes', label: 'Routes' },
+    ],
+  },
+  {
+    key: 'revenue-assurance',
+    label: 'Revenue Assurance',
+    icon: 'fa-shield',
+    children: [
+      { key: 'subscriptions', label: 'Subscriptions' },
+      { key: 'enforcements', label: 'Enforcements' },
+    ],
+  },
   { key: 'reports', label: 'Reports', icon: 'fa-line-chart' },
-  { key: 'subscriptions', label: 'Subscriptions', icon: 'fa-credit-card' },
-  { key: 'enforcements', label: 'Enforcements', icon: 'fa-shield' },
   { key: 'users', label: 'Users', icon: 'fa-user' },
   { key: 'settings', label: 'Settings', icon: 'fa-cog' },
 ]
@@ -85,8 +105,21 @@ export const incidentPages: DashboardPage[] = [
   'incidents',
   'incidents-summary',
   'incidents-incidents',
-  'incidents-city-alerts',
   'incidents-categories',
 ]
 
 export const newsPages: DashboardPage[] = ['news', 'news-news', 'news-categories']
+
+export const mobilityPages: DashboardPage[] = [
+  'mobility',
+  'vehicles',
+  'categories',
+  'stages',
+  'routes',
+]
+
+export const revenueAssurancePages: DashboardPage[] = [
+  'revenue-assurance',
+  'subscriptions',
+  'enforcements',
+]

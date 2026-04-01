@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { NewsCategoryRead } from '../../api/types'
 import { newsCategories as api } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
+import { DataTablePagination } from '../table/DataTablePagination'
 
 interface NewsCategoriesProps {
   categories: NewsCategoryRead[]
@@ -26,6 +27,14 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
   const [editTarget, setEditTarget] = useState<NewsCategoryRead | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pagedCategories = categories.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
 
   const openCreate = () => {
     setEditTarget(null)
@@ -184,7 +193,7 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
             </tr>
           </thead>
           <tbody>
-            {categories.map((row) => (
+            {pagedCategories.map((row) => (
               <tr key={row.id}>
                 <td>{row.name}</td>
                 <td>{row.description || '—'}</td>
@@ -235,6 +244,17 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
             No news categories yet.
           </p>
         )}
+        <DataTablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={categories.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPage(1)
+            setPageSize(size)
+          }}
+        />
       </div>
     </div>
   )
