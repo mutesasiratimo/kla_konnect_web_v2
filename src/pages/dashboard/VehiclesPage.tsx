@@ -39,12 +39,7 @@ export function VehiclesPage({
       {!showNewVehicle && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
-            <div>
-              <h1 className="dashboard-page-title">Vehicles</h1>
-              <p className="dashboard-page-lead">
-                View and manage the registered vehicles.
-              </p>
-            </div>
+            <h1 className="dashboard-page-title">Vehicles</h1>
             <button
               type="button"
               className="primary-button"

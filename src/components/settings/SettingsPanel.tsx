@@ -9,6 +9,7 @@ import { getSession, setSession } from '../../api/client'
 import { auth, users } from '../../api/endpoints'
 import { RevenueParentCategoriesTab } from '../revenue/RevenueParentCategoriesTab'
 import { RevenueSubscriptionsCrudList } from '../revenue/RevenueSubscriptionsCrudList'
+import { RolesCrudList } from './RolesCrudList'
 
 export type SettingsTabId =
   | 'profile'
@@ -25,21 +26,23 @@ interface SettingsPanelProps {
   revenueLoadError: string | null
   onRefreshParentCategories: () => void | Promise<void>
   onRefreshSubscriptions: () => void | Promise<void>
+  onRefreshRoles: () => void | Promise<void>
 }
 
 const tabs: { id: SettingsTabId; label: string; icon: string }[] = [
   { id: 'profile', label: 'Profile', icon: 'fa-user-circle-o' },
   { id: 'roles', label: 'Roles', icon: 'fa-shield' },
-  {
-    id: 'subscriptions',
-    label: 'Subscription Packages',
-    icon: 'fa-credit-card',
-  },
-  {
-    id: 'parent-categories',
-    label: 'Parent categories',
-    icon: 'fa-sitemap',
-  },
+  // Hidden from Settings tabs (restore to show)
+  // {
+  //   id: 'subscriptions',
+  //   label: 'Subscription Packages',
+  //   icon: 'fa-credit-card',
+  // },
+  // {
+  //   id: 'parent-categories',
+  //   label: 'Parent categories',
+  //   icon: 'fa-sitemap',
+  // },
 ]
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -51,6 +54,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   revenueLoadError,
   onRefreshParentCategories,
   onRefreshSubscriptions,
+  onRefreshRoles,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTabId>('profile')
   const session = getSession()
@@ -172,7 +176,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="dashboard-settings-profile-card">
             <div className="dashboard-settings-profile-header">
               <h3>Profile information</h3>
-              <p>Update your account details and password.</p>
             </div>
             <div className="dashboard-settings-profile-layout">
               <form className="dashboard-settings-profile-form" onSubmit={handleProfileSave}>
@@ -280,33 +283,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       {activeTab === 'roles' && (
         <div className="settings-tab-panel" role="tabpanel">
-          <div className="dashboard-table-shell">
-            <table className="dashboard-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>ID</th>
-                  <th>Description</th>
-                  <th>Permissions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roleData.map((role) => (
-                  <tr key={role.id}>
-                    <td>{role.name}</td>
-                    <td>{role.id}</td>
-                    <td>{role.description || '—'}</td>
-                    <td>{role.permissions?.length ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {roleData.length === 0 && (
-              <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-                No roles loaded.
-              </p>
-            )}
-          </div>
+          <RolesCrudList roles={roleData} onRefresh={onRefreshRoles} />
         </div>
       )}
 

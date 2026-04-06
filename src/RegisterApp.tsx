@@ -839,7 +839,7 @@ export function RegisterApp() {
         <div className="register-card">
           <header className="register-header">
             {/* <div className="register-logo">
-              <img src="/dmmp_logo.png" alt="DMMP" />
+              <img src="/kcclogo.jpg" alt="Kla Konnect" />
             </div>
             <div className="register-heading">
               <h1>Self Registration</h1>

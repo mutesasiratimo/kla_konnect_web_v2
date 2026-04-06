@@ -1,0 +1,135 @@
+# Single-file stack for the Kla Konnect web app (static SPA + nginx).
+# Namespace matches the API stack so you can apply API + web manifests together.
+#
+# Important — Vite env is compile-time:
+#   VITE_API_URL and VITE_GOOGLE_MAPS_API_KEY are baked into the JS at `docker build`.
+#   Set them in CI (GitHub Actions secrets for ghcr-build.yml) or:
+#     docker build --build-arg VITE_API_URL=https://your-api.example.com/api ...
+#   Changing API URL in-cluster requires rebuilding and pushing a new image tag.
+#
+# Before first apply:
+#   1. Replace WEB_IMAGE with your GHCR image (same pattern as .github/workflows/ghcr-build.yml:
+#      ghcr.io/<owner>/<repo>:tag e.g. ghcr.io/mutesasiratimo/drammp_web_v2:latest).
+#   2. If the image is private, create a pull secret (same as API):
+#        kubectl create secret docker-registry ghcr-pull-secret \
+#          --namespace=dmmp --docker-server=ghcr.io \
+#          --docker-username=YOUR_GH_USER --docker-password=YOUR_PAT
+#   3. Optional: edit or remove the Ingress host/TLS section at the bottom.
+#
+# Apply:
+#   kubectl apply -f k8s/manifest.yaml
+#
+# Port-forward (no Ingress):
+#   kubectl port-forward -n dmmp svc/dmmp-web 8080:80
+#   open http://localhost:8080
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dmmp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dmmp-web
+  namespace: dmmp
+  labels:
+    app: dmmp
+    component: web
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dmmp
+      component: web
+  template:
+    metadata:
+      labels:
+        app: dmmp
+        component: web
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: web
+          # TODO: set to your GHCR image (workflow pushes ghcr.io/$GITHUB_REPOSITORY:latest)
+          image: ghcr.io/mutesasiratimo/drammp_web_v2:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dmmp-web
+  namespace: dmmp
+  labels:
+    app: dmmp
+    component: web
+spec:
+  type: ClusterIP
+  selector:
+    app: dmmp
+    component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# Optional: expose the SPA behind your ingress controller (nginx, traefik, etc.).
+# Requires an IngressClass named "nginx"; adjust className, host, and TLS to your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dmmp-web
+  namespace: dmmp
+  labels:
+    app: dmmp
+    component: web
+  annotations:
+    # nginx ingress controller — tweak or remove if you use another ingress
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: web.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dmmp-web
+                port:
+                  number: 80
+  # tls:
+  #   - hosts:
+  #       - web.example.com
+  #     secretName: web-example-com-tls

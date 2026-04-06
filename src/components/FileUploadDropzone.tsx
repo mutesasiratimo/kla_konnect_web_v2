@@ -1,4 +1,5 @@
 import React, { useId, useRef, useState } from 'react'
+import { resolveApiMediaUrl } from '../api/client'
 import { uploads } from '../api/endpoints'
 import type { UploadFileKind } from '../api/types'
 
@@ -102,7 +103,7 @@ export function ImageUploadDropzone({
         {valueUrl ? (
           <div className="dashboard-file-dropzone-preview-split">
             <div className="dashboard-file-dropzone-preview-pane">
-              <img src={valueUrl} alt="" />
+              <img src={resolveApiMediaUrl(valueUrl) ?? valueUrl} alt="" />
               <button
                 type="button"
                 className="dashboard-file-dropzone-close"

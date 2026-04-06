@@ -24,9 +24,6 @@ export function NewsSection({
       {currentPage === 'news' && (
         <div className="dashboard-page">
           <h1 className="dashboard-page-title">News</h1>
-          <p className="dashboard-page-lead">
-            Manage news content and categories.
-          </p>
           {newsLoadError && (
             <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>
               {newsLoadError}
@@ -37,12 +34,7 @@ export function NewsSection({
       {currentPage === 'news-news' && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
-            <div>
-              <h1 className="dashboard-page-title">News — Articles</h1>
-              <p className="dashboard-page-lead">
-                Create, update and archive news articles.
-              </p>
-            </div>
+            <h1 className="dashboard-page-title">News — Articles</h1>
           </div>
           {newsLoadError && (
             <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>
@@ -62,12 +54,7 @@ export function NewsSection({
       {currentPage === 'news-categories' && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
-            <div>
-              <h1 className="dashboard-page-title">News — Categories</h1>
-              <p className="dashboard-page-lead">
-                Create, update and archive news categories.
-              </p>
-            </div>
+            <h1 className="dashboard-page-title">News — Categories</h1>
           </div>
           {newsLoadError && (
             <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>

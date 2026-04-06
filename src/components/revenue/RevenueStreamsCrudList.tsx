@@ -1,14 +1,16 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type {
   RevenueCategoryRead,
   RevenueStreamCreate,
   RevenueStreamRead,
   RevenueSubcategoryRead,
   StageRead,
+  UserRead,
 } from '../../api/types'
-import { revenueStreams as api } from '../../api/endpoints'
+import { revenueStreams as api, users as usersApi } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
 
 interface RevenueStreamsCrudListProps {
   streams: RevenueStreamRead[]
@@ -46,6 +48,90 @@ const emptyForm = (defaultParent = ''): FormState => ({
 
 const iconBtn: React.CSSProperties = { width: 30, height: 30, padding: 0 }
 
+function userDisplayName(u: UserRead): string {
+  const parts = [u.firstname, u.lastothernames].filter(Boolean).join(' ').trim()
+  return u.full_name?.trim() || parts || u.email
+}
+
+function fmt(v: unknown): string | null {
+  if (v === null || v === undefined) return null
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  const s = String(v).trim()
+  return s.length ? s : null
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value === null || value === undefined || value === '') return null
+  return (
+    <div className="detail-row">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  )
+}
+
+function PersonSection({
+  title,
+  userId,
+  user,
+  loading,
+}: {
+  title: string
+  userId: string | null | undefined
+  user: UserRead | null
+  loading: boolean
+}) {
+  return (
+    <div className="vehicle-detail-person-block" style={{ marginTop: '1rem' }}>
+      <h4
+        className="dashboard-dialog-section-label"
+        style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}
+      >
+        {title}
+      </h4>
+      {!userId ? (
+        <p
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--dashboard-muted, #64748b)',
+            margin: 0,
+          }}
+        >
+          Not linked
+        </p>
+      ) : loading && !user ? (
+        <p style={{ fontSize: '0.875rem', margin: 0 }}>Loading profile…</p>
+      ) : !user ? (
+        <p style={{ fontSize: '0.875rem', color: '#b45309', margin: 0 }}>
+          Could not load profile for user ID <code>{userId}</code>
+        </p>
+      ) : (
+        <dl className="detail-list" style={{ marginTop: 0 }}>
+          <DetailRow label="Name" value={userDisplayName(user)} />
+          <DetailRow label="Email" value={user.email} />
+          <DetailRow label="Phone" value={user.phone} />
+          <DetailRow
+            label="ID"
+            value={
+              [user.id_type, user.id_number].filter(Boolean).join(' ') || null
+            }
+          />
+          <DetailRow
+            label="Status"
+            value={
+              user.is_verified
+                ? 'Verified'
+                : user.is_active
+                  ? 'Active (unverified)'
+                  : 'Inactive'
+            }
+          />
+        </dl>
+      )}
+    </div>
+  )
+}
+
 function toCreateBody(form: FormState): RevenueStreamCreate {
   return {
     name: form.name.trim(),
@@ -69,18 +155,19 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
   onParentCategoryIdFilterChange,
   onRefresh,
 }) => {
-  const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<RevenueStreamRead | null>(null)
   const [viewTarget, setViewTarget] = useState<RevenueStreamRead | null>(null)
+  const [viewDetail, setViewDetail] = useState<RevenueStreamRead | null>(null)
+  const [viewOwner, setViewOwner] = useState<UserRead | null>(null)
+  const [viewOperator, setViewOperator] = useState<UserRead | null>(null)
+  const [viewLoading, setViewLoading] = useState(false)
+  const [viewLoadNote, setViewLoadNote] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(
     emptyForm(parentCategories[0]?.id ?? ''),
   )
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [subcategoryFilter, setSubcategoryFilter] = useState('')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-
   const parentNameById = useMemo(
     () => Object.fromEntries(parentCategories.map((c) => [c.id, c.name])),
     [parentCategories],
@@ -143,31 +230,94 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
     subNameById,
     stageNameById,
   ])
-  const totalPages = Math.max(1, Math.ceil(filteredStreams.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedStreams = filteredStreams.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
+
+  useEffect(() => {
+    if (!viewTarget) {
+      setViewDetail(null)
+      setViewOwner(null)
+      setViewOperator(null)
+      setViewLoadNote(null)
+      setViewLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setViewLoading(true)
+    setViewLoadNote(null)
+    setViewDetail(null)
+    setViewOwner(null)
+    setViewOperator(null)
+
+    void (async () => {
+      try {
+        let detail: RevenueStreamRead = viewTarget
+        try {
+          detail = await api.get(viewTarget.id)
+        } catch {
+          if (!cancelled) {
+            setViewLoadNote(
+              'Showing list data; full record could not be refreshed from the API.',
+            )
+          }
+        }
+        if (cancelled) return
+        setViewDetail(detail)
+
+        let owner: UserRead | null = null
+        let operator: UserRead | null = null
+        if (detail.owner_id) {
+          try {
+            owner = await usersApi.get(detail.owner_id)
+          } catch {
+            owner = null
+          }
+        }
+        if (cancelled) return
+        setViewOwner(owner)
+
+        if (detail.primary_operator_id) {
+          if (detail.primary_operator_id === detail.owner_id) {
+            operator = owner
+          } else {
+            try {
+              operator = await usersApi.get(detail.primary_operator_id)
+            } catch {
+              operator = null
+            }
+          }
+        }
+        if (!cancelled) setViewOperator(operator)
+      } finally {
+        if (!cancelled) setViewLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [viewTarget])
 
   const closeDialogs = () => {
-    setCreateOpen(false)
     setEditTarget(null)
     setViewTarget(null)
+    setViewDetail(null)
+    setViewOwner(null)
+    setViewOperator(null)
+    setViewLoadNote(null)
+    setViewLoading(false)
     setForm(emptyForm(parentCategories[0]?.id ?? ''))
   }
 
-  const openCreate = () => {
-    setEditTarget(null)
+  const closeViewOnly = () => {
     setViewTarget(null)
-    setForm(
-      emptyForm(parentCategories[0]?.id ?? parentCategoryIdFilter ?? ''),
-    )
-    setCreateOpen(true)
+    setViewDetail(null)
+    setViewOwner(null)
+    setViewOperator(null)
+    setViewLoadNote(null)
+    setViewLoading(false)
   }
 
   const openEdit = (row: RevenueStreamRead) => {
-    setCreateOpen(false)
     setViewTarget(null)
     setEditTarget(row)
     setForm({
@@ -181,22 +331,6 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
       model: row.model ?? '',
       stage_id: row.stage_id ?? '',
     })
-  }
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.name.trim() || !form.category_id) return
-    setSaving(true)
-    try {
-      await api.create(toCreateBody(form))
-      closeDialogs()
-      await onRefresh()
-    } catch (err) {
-      console.error(err)
-      window.alert('Could not create revenue stream.')
-    } finally {
-      setSaving(false)
-    }
   }
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -225,7 +359,7 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
     setSaving(true)
     try {
       await api.delete(row.id)
-      if (viewTarget?.id === row.id) setViewTarget(null)
+      if (viewTarget?.id === row.id) closeViewOnly()
       await onRefresh()
     } catch (err) {
       console.error(err)
@@ -234,6 +368,96 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
       setSaving(false)
     }
   }
+
+  const columns: GridColDef<RevenueStreamRead>[] = [
+    { field: 'name', headerName: 'Name', flex: 1, minWidth: 140 },
+    {
+      field: 'reg_no',
+      headerName: 'Reg no.',
+      width: 120,
+      valueGetter: (_v, r) => r.reg_no ?? '—',
+    },
+    {
+      field: 'vin',
+      headerName: 'VIN',
+      width: 130,
+      valueGetter: (_v, r) => r.vin ?? '—',
+    },
+    {
+      field: 'model',
+      headerName: 'Model',
+      width: 120,
+      valueGetter: (_v, r) => r.model ?? '—',
+    },
+    {
+      field: 'category_id',
+      headerName: 'Category',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, r) => parentNameById[r.category_id] ?? r.category_id,
+    },
+    {
+      field: 'subcategory_id',
+      headerName: 'Subcategory',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, r) =>
+        r.subcategory_id ? subNameById[r.subcategory_id] ?? r.subcategory_id : '—',
+    },
+    {
+      field: 'stage_id',
+      headerName: 'Stage',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, r) =>
+        r.stage_id ? stageNameById[r.stage_id] ?? r.stage_id : '—',
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 124,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      align: 'right',
+      headerAlign: 'right',
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            className="icon-button"
+            title="View"
+            style={iconBtn}
+            onClick={() => {
+              setEditTarget(null)
+              setViewTarget(params.row)
+            }}
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            title="Edit"
+            style={iconBtn}
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            title="Delete"
+            style={iconBtn}
+            onClick={() => void handleDelete(params.row)}
+            disabled={saving}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   const renderFormFields = (submitLabel: string, onSubmit: (e: React.FormEvent) => void) => (
     <form onSubmit={onSubmit}>
@@ -373,25 +597,7 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
   )
 
   return (
-    <section className="dashboard-revenue-streams" aria-labelledby="revenue-streams-heading">
-      <div className="dashboard-page-header-row" style={{ marginTop: '2rem' }}>
-        <div>
-          <h2
-            id="revenue-streams-heading"
-            className="dashboard-page-title"
-            style={{ fontSize: '1.25rem' }}
-          >
-            Revenue streams
-          </h2>
-          <p className="dashboard-page-lead" style={{ marginTop: 4 }}>
-            Registered vehicles and operators linked to revenue categories (API).
-          </p>
-        </div>
-        <button type="button" className="primary-button" onClick={openCreate}>
-          + Add stream
-        </button>
-      </div>
-
+    <section className="dashboard-revenue-streams" aria-label="Vehicle revenue streams">
       <div className="dashboard-table-shell">
         <div className="dashboard-filters">
           <div className="dashboard-filter">
@@ -447,105 +653,16 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
         </div>
 
         <div className="dashboard-table-scroll">
-          <table className="dashboard-table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Reg no.</th>
-                <th scope="col">VIN</th>
-                <th scope="col">Model</th>
-                <th scope="col">Category</th>
-                <th scope="col">Subcategory</th>
-                <th scope="col">Stage</th>
-                <th scope="col" className="dashboard-table-actions">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedStreams.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.name}</td>
-                  <td>{row.reg_no ?? '—'}</td>
-                  <td>{row.vin ?? '—'}</td>
-                  <td>{row.model ?? '—'}</td>
-                  <td>{parentNameById[row.category_id] ?? row.category_id}</td>
-                  <td>
-                    {row.subcategory_id
-                      ? subNameById[row.subcategory_id] ?? row.subcategory_id
-                      : '—'}
-                  </td>
-                  <td>
-                    {row.stage_id
-                      ? stageNameById[row.stage_id] ?? row.stage_id
-                      : '—'}
-                  </td>
-                  <td className="dashboard-table-actions">
-                    <button
-                      type="button"
-                      className="icon-button"
-                      title="View"
-                      style={iconBtn}
-                      onClick={() => {
-                        setCreateOpen(false)
-                        setEditTarget(null)
-                        setViewTarget(row)
-                      }}
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      title="Edit"
-                      style={iconBtn}
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      title="Delete"
-                      style={iconBtn}
-                      onClick={() => handleDelete(row)}
-                      disabled={saving}
-                    >
-                      <i className="fa fa-trash" aria-hidden="true" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredStreams.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="dashboard-table-empty">
-                    No revenue streams match the current filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <DashboardDataGrid<RevenueStreamRead>
+            rows={filteredStreams}
+            columns={columns}
+            getRowId={(row) => row.id}
+            localeText={{
+              noRowsLabel: 'No revenue streams match the current filters.',
+            }}
+          />
         </div>
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={filteredStreams.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
-          }}
-        />
       </div>
-
-      <DashboardDialog
-        open={createOpen}
-        title="Add revenue stream"
-        onClose={closeDialogs}
-      >
-        {renderFormFields('Create', handleCreate)}
-      </DashboardDialog>
 
       <DashboardDialog
         open={!!editTarget}
@@ -557,68 +674,248 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
 
       <DashboardDialog
         open={!!viewTarget}
-        title={viewTarget?.name ?? 'Revenue stream'}
-        onClose={() => setViewTarget(null)}
+        title={viewTarget?.name ?? 'Vehicle details'}
+        onClose={closeViewOnly}
+        wide
       >
-        {viewTarget && (
-          <dl className="detail-list">
-            <div className="detail-row">
-              <dt>ID</dt>
-              <dd>{viewTarget.id}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Description</dt>
-              <dd>{viewTarget.description ?? '—'}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Parent category</dt>
-              <dd>
-                {parentNameById[viewTarget.category_id] ?? viewTarget.category_id}
-              </dd>
-            </div>
-            <div className="detail-row">
-              <dt>Subcategory</dt>
-              <dd>
-                {viewTarget.subcategory_id
-                  ? subNameById[viewTarget.subcategory_id] ??
-                    viewTarget.subcategory_id
-                  : '—'}
-              </dd>
-            </div>
-            <div className="detail-row">
-              <dt>Registration no.</dt>
-              <dd>{viewTarget.reg_no ?? '—'}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>VIN</dt>
-              <dd>{viewTarget.vin ?? '—'}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Color</dt>
-              <dd>{viewTarget.color ?? '—'}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Model</dt>
-              <dd>{viewTarget.model ?? '—'}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Stage</dt>
-              <dd>
-                {viewTarget.stage_id
-                  ? stageNameById[viewTarget.stage_id] ?? viewTarget.stage_id
-                  : '—'}
-              </dd>
-            </div>
-            <div className="detail-row">
-              <dt>Owner ID</dt>
-              <dd>{viewTarget.owner_id ?? '—'}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Primary operator ID</dt>
-              <dd>{viewTarget.primary_operator_id ?? '—'}</dd>
-            </div>
-          </dl>
-        )}
+        {viewTarget &&
+          (() => {
+            const d = viewDetail ?? viewTarget
+            const tariffParts = [
+              fmt(d.tariff_amount),
+              fmt(d.tariff_frequency),
+            ].filter(Boolean)
+            const tariffLine = tariffParts.length
+              ? tariffParts.join(' · ')
+              : null
+
+            return (
+              <div className="dashboard-dialog-body dashboard-dialog-body--role-details">
+                {viewLoadNote && (
+                  <p style={{ color: '#b45309', marginTop: 0, fontSize: '0.875rem' }}>
+                    {viewLoadNote}
+                  </p>
+                )}
+                {viewLoading && !viewDetail ? (
+                  <p style={{ fontSize: '0.875rem', color: 'var(--dashboard-muted, #64748b)' }}>
+                    Loading vehicle details…
+                  </p>
+                ) : (
+                  <>
+                    <h4
+                      className="dashboard-dialog-section-label"
+                      style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}
+                    >
+                      Record
+                    </h4>
+                    <dl className="detail-list" style={{ marginTop: 0 }}>
+                      <DetailRow label="ID" value={d.id} />
+                      <DetailRow label="Description" value={fmt(d.description)} />
+                      <DetailRow
+                        label="Parent category"
+                        value={
+                          parentNameById[d.category_id] ?? d.category_id ?? null
+                        }
+                      />
+                      <DetailRow
+                        label="Subcategory"
+                        value={
+                          d.subcategory_id
+                            ? subNameById[d.subcategory_id] ?? d.subcategory_id
+                            : null
+                        }
+                      />
+                      <DetailRow
+                        label="Stage / park"
+                        value={
+                          d.stage_id
+                            ? stageNameById[d.stage_id] ?? d.stage_id
+                            : null
+                        }
+                      />
+                      <DetailRow label="Purpose" value={fmt(d.purpose)} />
+                      <DetailRow label="Stream type" value={fmt(d.type)} />
+                    </dl>
+
+                    <h4
+                      className="dashboard-dialog-section-label"
+                      style={{
+                        fontSize: '0.95rem',
+                        marginTop: '1.25rem',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      Vehicle &amp; registration
+                    </h4>
+                    <dl className="detail-list" style={{ marginTop: 0 }}>
+                      <DetailRow label="Registration no." value={fmt(d.reg_no)} />
+                      <DetailRow
+                        label="Reg. reference"
+                        value={fmt(d.reg_reference_no)}
+                      />
+                      <DetailRow label="VIN" value={fmt(d.vin)} />
+                      <DetailRow label="Model" value={fmt(d.model)} />
+                      <DetailRow label="Color" value={fmt(d.color)} />
+                      <DetailRow label="Capacity" value={fmt(d.capacity)} />
+                      <DetailRow label="Logbook no." value={fmt(d.logbook_no)} />
+                      <DetailRow label="Engine no." value={fmt(d.engine_no)} />
+                      <DetailRow label="Engine HP" value={fmt(d.engine_hp)} />
+                      <DetailRow label="Permit no." value={fmt(d.permit_no)} />
+                    </dl>
+
+                    <h4
+                      className="dashboard-dialog-section-label"
+                      style={{
+                        fontSize: '0.95rem',
+                        marginTop: '1.25rem',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      Business / operator entity
+                    </h4>
+                    <dl className="detail-list" style={{ marginTop: 0 }}>
+                      <DetailRow label="Business name" value={fmt(d.business_name)} />
+                      <DetailRow label="Trading name" value={fmt(d.trading_name)} />
+                      <DetailRow label="TIN" value={fmt(d.tin)} />
+                      <DetailRow label="BRN" value={fmt(d.brn)} />
+                      <DetailRow
+                        label="Company type"
+                        value={fmt(d.company_type)}
+                      />
+                      <DetailRow
+                        label="Business type"
+                        value={fmt(d.business_type)}
+                      />
+                      <DetailRow
+                        label="Establishment type"
+                        value={fmt(d.establishment_type)}
+                      />
+                    </dl>
+
+                    <h4
+                      className="dashboard-dialog-section-label"
+                      style={{
+                        fontSize: '0.95rem',
+                        marginTop: '1.25rem',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      Tariff &amp; activity
+                    </h4>
+                    <dl className="detail-list" style={{ marginTop: 0 }}>
+                      <DetailRow label="Tariff" value={tariffLine} />
+                      <DetailRow
+                        label="Revenue activity"
+                        value={fmt(d.revenue_activity)}
+                      />
+                      <DetailRow
+                        label="Last payment"
+                        value={fmt(d.last_payment_date)}
+                      />
+                      <DetailRow
+                        label="Last renewal"
+                        value={fmt(d.last_renewal_date)}
+                      />
+                      <DetailRow
+                        label="Next renewal"
+                        value={fmt(d.next_renewal_date)}
+                      />
+                    </dl>
+
+                    <h4
+                      className="dashboard-dialog-section-label"
+                      style={{
+                        fontSize: '0.95rem',
+                        marginTop: '1.25rem',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      Location
+                    </h4>
+                    <dl className="detail-list" style={{ marginTop: 0 }}>
+                      <DetailRow label="Address" value={fmt(d.address)} />
+                      {d.address_lat != null && d.address_long != null && (
+                        <div className="detail-row">
+                          <dt>Coordinates</dt>
+                          <dd
+                            style={{
+                              fontSize: '0.8rem',
+                              color: 'var(--dashboard-muted, #64748b)',
+                            }}
+                          >
+                            {Number(d.address_lat).toFixed(6)},{' '}
+                            {Number(d.address_long).toFixed(6)}
+                          </dd>
+                        </div>
+                      )}
+                      <DetailRow label="District" value={fmt(d.district)} />
+                      <DetailRow label="County" value={fmt(d.county)} />
+                      <DetailRow label="Subcounty" value={fmt(d.subcounty)} />
+                      <DetailRow label="Parish" value={fmt(d.parish)} />
+                      <DetailRow label="Village" value={fmt(d.village)} />
+                    </dl>
+
+                    {(fmt(d.vessel_type) ||
+                      fmt(d.vessel_length) ||
+                      fmt(d.vessel_propulsion)) && (
+                      <>
+                        <h4
+                          className="dashboard-dialog-section-label"
+                          style={{
+                            fontSize: '0.95rem',
+                            marginTop: '1.25rem',
+                            marginBottom: '0.5rem',
+                          }}
+                        >
+                          Vessel (if applicable)
+                        </h4>
+                        <dl className="detail-list" style={{ marginTop: 0 }}>
+                          <DetailRow label="Vessel type" value={fmt(d.vessel_type)} />
+                          <DetailRow
+                            label="Length"
+                            value={fmt(d.vessel_length)}
+                          />
+                          <DetailRow
+                            label="Propulsion"
+                            value={fmt(d.vessel_propulsion)}
+                          />
+                          <DetailRow
+                            label="Storage"
+                            value={fmt(d.vessel_storage)}
+                          />
+                          <DetailRow
+                            label="Material"
+                            value={fmt(d.vessel_material)}
+                          />
+                          <DetailRow
+                            label="Safety equipment"
+                            value={fmt(d.vessel_safety_equip)}
+                          />
+                          <DetailRow
+                            label="Daily active hours"
+                            value={fmt(d.daily_active_hours)}
+                          />
+                        </dl>
+                      </>
+                    )}
+
+                    <PersonSection
+                      title="Owner"
+                      userId={d.owner_id}
+                      user={viewOwner}
+                      loading={viewLoading}
+                    />
+                    <PersonSection
+                      title="Primary operator"
+                      userId={d.primary_operator_id}
+                      user={viewOperator}
+                      loading={viewLoading}
+                    />
+                  </>
+                )}
+              </div>
+            )
+          })()}
       </DashboardDialog>
     </section>
   )

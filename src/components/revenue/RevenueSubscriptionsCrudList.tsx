@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type {
   RevenueCategoryRead,
   RevenueStreamRead,
@@ -7,7 +8,7 @@ import type {
 } from '../../api/types'
 import { revenueSubscriptions } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
 
 type Props = {
   subscriptions: RevenueSubscriptionRead[]
@@ -63,9 +64,6 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-
   const categoryNameById = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.id, c.name])),
     [categories],
@@ -91,10 +89,6 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
         .includes(q),
     )
   }, [subscriptions, search, categoryNameById, streamNameById])
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const paged = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -182,6 +176,93 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
 
   const iconBtnStyle: React.CSSProperties = { width: 30, height: 30, padding: 0 }
 
+  const columns: GridColDef<RevenueSubscriptionRead>[] = [
+    {
+      field: 'category_id',
+      headerName: 'Category',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, row) => categoryNameById[row.category_id] ?? row.category_id,
+    },
+    {
+      field: 'revenue_stream_id',
+      headerName: 'Stream',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, row) =>
+        row.revenue_stream_id
+          ? streamNameById[row.revenue_stream_id] ?? row.revenue_stream_id
+          : '—',
+    },
+    {
+      field: 'amount',
+      headerName: 'Amount',
+      width: 120,
+      valueGetter: (_v, row) => `${row.amount} ${row.currency ?? ''}`.trim(),
+    },
+    { field: 'frequency', headerName: 'Frequency', width: 110 },
+    {
+      field: 'start_date',
+      headerName: 'Start',
+      width: 120,
+      valueGetter: (_v, row) => row.start_date ?? '—',
+    },
+    {
+      field: 'end_date',
+      headerName: 'End',
+      width: 120,
+      valueGetter: (_v, row) => row.end_date ?? '—',
+    },
+    {
+      field: 'is_active',
+      headerName: 'Active',
+      width: 90,
+      valueGetter: (_v, row) => (row.is_active ? 'Yes' : 'No'),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 124,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtnStyle}
+            title="View"
+            aria-label="View subscription package"
+            onClick={() => setViewTarget(params.row)}
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtnStyle}
+            title="Edit"
+            aria-label="Edit subscription package"
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ ...iconBtnStyle, color: '#ef4444' }}
+            title="Delete"
+            aria-label="Delete subscription package"
+            onClick={() => void handleDelete(params.row.id)}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <>
       <div
@@ -193,10 +274,7 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
           <input
             type="search"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Category, stream, frequency..."
           />
         </label>
@@ -457,89 +535,15 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th>Stream</th>
-              <th>Amount</th>
-              <th>Frequency</th>
-              <th>Start</th>
-              <th>End</th>
-              <th>Active</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.map((row) => (
-              <tr key={row.id}>
-                <td>{categoryNameById[row.category_id] ?? row.category_id}</td>
-                <td>
-                  {row.revenue_stream_id
-                    ? streamNameById[row.revenue_stream_id] ?? row.revenue_stream_id
-                    : '—'}
-                </td>
-                <td>
-                  {row.amount} {row.currency ?? ''}
-                </td>
-                <td>{row.frequency}</td>
-                <td>{row.start_date ?? '—'}</td>
-                <td>{row.end_date ?? '—'}</td>
-                <td>{row.is_active ? 'Yes' : 'No'}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtnStyle}
-                      title="View"
-                      aria-label="View subscription package"
-                      onClick={() => setViewTarget(row)}
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtnStyle}
-                      title="Edit"
-                      aria-label="Edit subscription package"
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ ...iconBtnStyle, color: '#ef4444' }}
-                      title="Delete"
-                      aria-label="Delete subscription package"
-                      onClick={() => handleDelete(row.id)}
-                    >
-                      <i className="fa fa-trash" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            {subscriptions.length === 0
-              ? 'No subscription packages loaded.'
-              : 'No subscription packages match this filter.'}
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={filtered.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
+        <DashboardDataGrid<RevenueSubscriptionRead>
+          rows={filtered}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{
+            noRowsLabel:
+              subscriptions.length === 0
+                ? 'No subscription packages loaded.'
+                : 'No subscription packages match this filter.',
           }}
         />
       </div>

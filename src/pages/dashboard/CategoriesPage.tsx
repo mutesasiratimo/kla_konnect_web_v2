@@ -21,13 +21,7 @@ export function CategoriesPage({
   return (
     <div className="dashboard-page">
       <div className="dashboard-page-header-row">
-        <div>
-          <h1 className="dashboard-page-title">Categories</h1>
-          <p className="dashboard-page-lead">
-            Categories shown here are child records linked to a parent. Manage
-            parent categories under Settings → Parent categories.
-          </p>
-        </div>
+        <h1 className="dashboard-page-title">Categories</h1>
       </div>
       {revenueLoadError && (
         <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>

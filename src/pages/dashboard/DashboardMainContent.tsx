@@ -53,7 +53,6 @@ export interface DashboardMainContentProps {
   dashboardVehiclesCompliantCount?: number
   dashboardVehiclesInReviewCount?: number
   avgResolutionHours: number | null
-  incidentData: IncidentRead[]
   incidentRecords: IncidentRead[]
   cityAlertRecords: IncidentRead[]
   catData: IncidentCategoryRead[]
@@ -97,6 +96,7 @@ export interface DashboardMainContentProps {
   onRefreshUsers: () => void | Promise<void>
   onRefreshParentCategories: () => void | Promise<void>
   onRefreshSubscriptions: () => void | Promise<void>
+  onRefreshRoles: () => void | Promise<void>
   usersActiveCount?: number
   incidentsVsTimeData?: {
     monthly: { label: string; value: number }[]
@@ -154,7 +154,6 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
       )}
 
       {(currentPage === 'incidents' ||
-        currentPage === 'incidents-summary' ||
         currentPage === 'incidents-incidents' ||
         currentPage === 'incidents-city-alerts' ||
         currentPage === 'city-alerts' ||
@@ -172,7 +171,6 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
           liveIncidentsCount={props.liveIncidentsCount}
           resolvedIncidentsCount={props.resolvedIncidentsCount}
           avgResolutionHours={props.avgResolutionHours}
-          incidentData={props.incidentData}
           incidentRecords={props.incidentRecords}
           cityAlertRecords={props.cityAlertRecords}
           catData={props.catData}
@@ -264,6 +262,7 @@ export function DashboardMainContent(props: DashboardMainContentProps) {
           onRefreshParentCategories={props.onRefreshParentCategories}
           onRefreshSubscriptions={props.onRefreshSubscriptions}
           roleData={props.roleData}
+          onRefreshRoles={props.onRefreshRoles}
         />
       )}
     </main>

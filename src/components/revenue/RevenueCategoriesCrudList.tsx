@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type {
   RevenueCategoryRead,
   RevenueSubcategoryRead,
@@ -7,7 +8,7 @@ import { revenueSubcategories as api } from '../../api/endpoints'
 import { suggestedCodeFromCategoryName } from '../../utils/codeFromCategoryName'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
 
 interface RevenueCategoriesCrudListProps {
   parentCategories: RevenueCategoryRead[]
@@ -58,19 +59,9 @@ export const RevenueCategoriesCrudList: React.FC<
   )
   const [saving, setSaving] = useState(false)
   const [createCodeFollowsName, setCreateCodeFollowsName] = useState(true)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-
   const parentNameById = useMemo(
     () => Object.fromEntries(parentCategories.map((c) => [c.id, c.name])),
     [parentCategories],
-  )
-  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedCategories = useMemo(
-    () =>
-      categories.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [categories, currentPage],
   )
 
   const closeDialogs = () => {
@@ -159,6 +150,66 @@ export const RevenueCategoriesCrudList: React.FC<
       window.alert('Could not delete category.')
     }
   }
+
+  const columns: GridColDef<RevenueSubcategoryRead>[] = [
+    {
+      field: 'category_id',
+      headerName: 'Parent category',
+      flex: 1,
+      minWidth: 160,
+      valueGetter: (_v, row) => parentNameById[row.category_id] ?? row.category_id,
+    },
+    { field: 'code', headerName: 'Code', width: 100 },
+    { field: 'name', headerName: 'Name', flex: 1, minWidth: 140 },
+    {
+      field: 'can_hail',
+      headerName: 'Can hail',
+      width: 100,
+      valueGetter: (_v, row) => (row.can_hail === true ? 'Yes' : 'No'),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 124,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtn}
+            title="View"
+            aria-label="View category"
+            onClick={() => setViewTarget(params.row)}
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtn}
+            title="Edit"
+            aria-label="Edit category"
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ ...iconBtn, color: '#ef4444' }}
+            title="Delete"
+            aria-label="Delete category"
+            onClick={() => void handleDelete(params.row.id)}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
@@ -420,82 +471,11 @@ export const RevenueCategoriesCrudList: React.FC<
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Parent category</th>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Can hail</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedCategories.map((row) => (
-              <tr key={row.id}>
-                <td>{parentNameById[row.category_id] ?? row.category_id}</td>
-                <td>{row.code}</td>
-                <td>{row.name}</td>
-                <td>{row.can_hail === true ? 'Yes' : 'No'}</td>
-                <td>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '0.35rem',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtn}
-                      title="View"
-                      aria-label="View category"
-                      onClick={() => setViewTarget(row)}
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtn}
-                      title="Edit"
-                      aria-label="Edit category"
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ ...iconBtn, color: '#ef4444' }}
-                      title="Delete"
-                      aria-label="Delete category"
-                      onClick={() => handleDelete(row.id)}
-                    >
-                      <i className="fa fa-trash" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {categories.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            No categories for this filter.
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={categories.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
-          }}
+        <DashboardDataGrid<RevenueSubcategoryRead>
+          rows={categories}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{ noRowsLabel: 'No categories for this filter.' }}
         />
       </div>
     </div>

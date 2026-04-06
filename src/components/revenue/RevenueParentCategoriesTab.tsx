@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type { RevenueCategoryRead } from '../../api/types'
 import { revenueCategories as api } from '../../api/endpoints'
 import { suggestedCodeFromCategoryName } from '../../utils/codeFromCategoryName'
 import { DashboardDialog } from '../DashboardDialog'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
 
 interface RevenueParentCategoriesTabProps {
   categories: RevenueCategoryRead[]
@@ -24,16 +25,6 @@ export const RevenueParentCategoriesTab: React.FC<
   const [saving, setSaving] = useState(false)
   /** While true, code updates from name on create; cleared when user edits code. */
   const [createCodeFollowsName, setCreateCodeFollowsName] = useState(true)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedCategories = useMemo(
-    () =>
-      categories.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [categories, currentPage],
-  )
-
   const closeDialogs = () => {
     setCreateOpen(false)
     setEditTarget(null)
@@ -109,13 +100,56 @@ export const RevenueParentCategoriesTab: React.FC<
     }
   }
 
+  const columns: GridColDef<RevenueCategoryRead>[] = [
+    { field: 'code', headerName: 'Code', width: 120 },
+    { field: 'name', headerName: 'Name', flex: 1, minWidth: 140 },
+    {
+      field: 'description',
+      headerName: 'Description',
+      flex: 1,
+      minWidth: 180,
+      valueGetter: (_v, r) => r.description || '—',
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 100,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtn}
+            title="Edit"
+            aria-label="Edit parent category"
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ ...iconBtn, color: '#ef4444' }}
+            title="Delete"
+            aria-label="Delete parent category"
+            onClick={() => void handleDelete(params.row.id)}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <div style={{ marginTop: '1rem' }}>
-      <div className="dashboard-page-header-row" style={{ marginBottom: '1rem' }}>
-        <p className="dashboard-page-lead" style={{ margin: 0 }}>
-          Top-level revenue categories. Child categories are managed under{' '}
-          <strong>Categories</strong> in the sidebar.
-        </p>
+      <div
+        className="dashboard-page-header-row"
+        style={{ marginBottom: '1rem', justifyContent: 'flex-end' }}
+      >
         <button type="button" className="primary-button" onClick={openCreate}>
           + New parent category
         </button>
@@ -220,70 +254,11 @@ export const RevenueParentCategoriesTab: React.FC<
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Description</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedCategories.map((row) => (
-              <tr key={row.id}>
-                <td>{row.code}</td>
-                <td>{row.name}</td>
-                <td>{row.description || '—'}</td>
-                <td>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '0.35rem',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtn}
-                      title="Edit"
-                      aria-label="Edit parent category"
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ ...iconBtn, color: '#ef4444' }}
-                      title="Delete"
-                      aria-label="Delete parent category"
-                      onClick={() => handleDelete(row.id)}
-                    >
-                      <i className="fa fa-trash" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {categories.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            No parent categories yet.
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={categories.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
-          }}
+        <DashboardDataGrid<RevenueCategoryRead>
+          rows={categories}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{ noRowsLabel: 'No parent categories yet.' }}
         />
       </div>
     </div>

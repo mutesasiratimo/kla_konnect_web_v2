@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type { RoleRead, UserCreate, UserRead, UserUpdate } from '../../api/types'
 import { users as usersApi } from '../../api/endpoints'
 import { getSession } from '../../api/client'
 import { DashboardDialog } from '../DashboardDialog'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
 
 interface UserListProps {
   users: UserRead[]
@@ -72,9 +73,6 @@ export const UserList: React.FC<UserListProps> = ({
   const [viewTarget, setViewTarget] = useState<UserRead | null>(null)
   const [filterText, setFilterText] = useState('')
   const [saving, setSaving] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-
   const roleNameById = useMemo(
     () => Object.fromEntries(roles.map((r) => [r.id, r.name])),
     [roles],
@@ -99,17 +97,6 @@ export const UserList: React.FC<UserListProps> = ({
       return blob.includes(q)
     })
   }, [users, filterText])
-
-  useEffect(() => {
-    setPage(1)
-  }, [filterText, users.length])
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedUsers = filteredUsers.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -202,6 +189,87 @@ export const UserList: React.FC<UserListProps> = ({
     height: 30,
     padding: 0,
   }
+
+  const columns: GridColDef<UserRead>[] = [
+    {
+      field: 'display',
+      headerName: 'Name',
+      flex: 1,
+      minWidth: 140,
+      valueGetter: (_v, row) => displayName(row),
+    },
+    {
+      field: 'id_number',
+      headerName: 'ID number',
+      width: 120,
+      valueGetter: (_v, row) => row.id_number ?? '—',
+    },
+    { field: 'email', headerName: 'Email', flex: 1, minWidth: 180 },
+    {
+      field: 'phone',
+      headerName: 'Phone',
+      width: 130,
+      valueGetter: (_v, row) => row.phone ?? '—',
+    },
+    {
+      field: 'role_id',
+      headerName: 'Role',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, row) =>
+        row.role_id ? roleNameById[row.role_id] ?? row.role_id : '—',
+    },
+    {
+      field: 'status',
+      headerName: 'Status',
+      width: 150,
+      sortable: false,
+      valueGetter: (_v, row) =>
+        `${row.is_active ? 'Active' : 'Inactive'}${row.is_verified ? ' · Verified' : ''}`,
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 124,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtnStyle}
+            title="View"
+            aria-label="View user"
+            onClick={() => setViewTarget(params.row)}
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtnStyle}
+            title="Edit"
+            aria-label="Edit user"
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ ...iconBtnStyle, color: '#ef4444' }}
+            title="Delete"
+            aria-label="Delete user"
+            onClick={() => void handleDelete(params.row.id)}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
@@ -505,92 +573,15 @@ export const UserList: React.FC<UserListProps> = ({
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>ID number</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedUsers.map((row) => (
-              <tr key={row.id}>
-                <td>{displayName(row)}</td>
-                <td>{row.id_number ?? '—'}</td>
-                <td>{row.email}</td>
-                <td>{row.phone ?? '—'}</td>
-                <td>
-                  {row.role_id ? roleNameById[row.role_id] ?? row.role_id : '—'}
-                </td>
-                <td>
-                  {row.is_active ? 'Active' : 'Inactive'}
-                  {row.is_verified ? ' · Verified' : ''}
-                </td>
-                <td>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '0.35rem',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtnStyle}
-                      title="View"
-                      aria-label="View user"
-                      onClick={() => setViewTarget(row)}
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={iconBtnStyle}
-                      title="Edit"
-                      aria-label="Edit user"
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ ...iconBtnStyle, color: '#ef4444' }}
-                      title="Delete"
-                      aria-label="Delete user"
-                      onClick={() => handleDelete(row.id)}
-                    >
-                      <i className="fa fa-trash" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filteredUsers.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            {users.length === 0
-              ? 'No users loaded.'
-              : 'No users match this filter.'}
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={filteredUsers.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
+        <DashboardDataGrid<UserRead>
+          rows={filteredUsers}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{
+            noRowsLabel:
+              users.length === 0
+                ? 'No users loaded.'
+                : 'No users match this filter.',
           }}
         />
       </div>

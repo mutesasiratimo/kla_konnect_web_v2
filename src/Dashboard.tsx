@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { ThemeProvider } from '@mui/material/styles'
 import './Dashboard.css'
+import { createDashboardMuiTheme } from './theme/muiDashboardTheme'
 import {
   incidents,
   incidentCategories,
@@ -35,8 +37,6 @@ import {
   navItems,
   incidentPages,
   newsPages,
-  mobilityPages,
-  revenueAssurancePages,
 } from './pages/dashboard/navConfig'
 import {
   sampleVehicles,
@@ -74,8 +74,6 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [incidentsExpanded, setIncidentsExpanded] = useState(false)
   const [newsExpanded, setNewsExpanded] = useState(false)
-  const [mobilityExpanded, setMobilityExpanded] = useState(false)
-  const [revenueAssuranceExpanded, setRevenueAssuranceExpanded] = useState(false)
   const [dashboardDatePreset, setDashboardDatePreset] =
     useState<DashboardDatePreset>('ytd')
   const [dashboardFromDate, setDashboardFromDate] = useState('')
@@ -211,16 +209,22 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
 
   const loadRoles = useCallback(async () => {
     try {
-      const data = await roles.list()
+      const data = await roles.listWithPermissions()
       setRoleData(data)
     } catch (e) {
       console.error(e)
-      setRoleData([])
-      setUsersLoadError(
-        (prev) =>
-          prev ??
-          'Could not load roles. Role names may be missing until this succeeds.',
-      )
+      try {
+        const fallback = await roles.list()
+        setRoleData(fallback)
+      } catch (e2) {
+        console.error(e2)
+        setRoleData([])
+        setUsersLoadError(
+          (prev) =>
+            prev ??
+            'Could not load roles. Role names may be missing until this succeeds.',
+        )
+      }
     }
   }, [])
 
@@ -488,18 +492,6 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   }, [currentPage])
 
   useEffect(() => {
-    if (mobilityPages.includes(currentPage)) {
-      setMobilityExpanded(true)
-    }
-  }, [currentPage])
-
-  useEffect(() => {
-    if (revenueAssurancePages.includes(currentPage)) {
-      setRevenueAssuranceExpanded(true)
-    }
-  }, [currentPage])
-
-  useEffect(() => {
     if (!darkMode) {
       document.documentElement.classList.remove('dashboard-dark')
     } else {
@@ -527,6 +519,11 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
 
   useEffect(() => {
     const pathname = window.location.pathname
+    if (pathname === '/incidents/summary') {
+      window.history.replaceState({}, '', pageToPath['incidents-incidents'])
+      setCurrentPage('incidents-incidents')
+      return
+    }
     const entry = (Object.entries(pageToPath) as [DashboardPage, string][]).find(
       ([, path]) => path === pathname,
     )
@@ -607,10 +604,10 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   const incidentRecords = incidentsInRange.filter((i) => !i.iscityreport)
   const cityAlertRecords = cityAlertData
 
-  const pendingIncidents = incidentRecords.filter((i) => i.status === '1')
-  const liveIncidents = pendingIncidents.filter((i) => i.isemergency)
+  const pendingIncidents = incidentRecords.filter((i) => i.status === '0')
+  const liveIncidents = incidentRecords.filter((i) => i.status === '1')
   const resolvedIncidents = incidentRecords.filter((i) => i.status === '2')
-  const archivedIncidents = incidentRecords.filter((i) => i.status === '0')
+  const archivedIncidents = incidentRecords.filter((i) => i.status === '3')
 
   const avgResolutionHours = (() => {
     const durations = resolvedIncidents
@@ -741,12 +738,14 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
 
   const incidentsVsTimeData = {
     monthly: normalizeTimeSeries(dashboardAnalytics.incidentsVsTime, [
+      'monthly_this_year',
       'monthly',
       'month',
       'months',
       'monthly_data',
     ]),
     quarterly: normalizeTimeSeries(dashboardAnalytics.incidentsVsTime, [
+      'quarterly_this_year',
       'quarterly',
       'quarters',
       'quarterly_data',
@@ -781,13 +780,10 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
 
   const isIncidentsActive = incidentPages.includes(currentPage)
   const isNewsActive = newsPages.includes(currentPage)
-  const isMobilityActive = mobilityPages.includes(currentPage)
-  const isRevenueAssuranceActive = revenueAssurancePages.includes(currentPage)
   const appBarTitle: string =
     {
       dashboard: 'Dashboard',
       incidents: 'Incidents',
-      'incidents-summary': 'Incidents - Summary',
       'incidents-incidents': 'Incidents - Records',
       'incidents-city-alerts': 'Incidents - City Alerts',
       'city-alerts': 'City Alerts',
@@ -824,6 +820,10 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
     await loadRoles()
   }, [loadUsers, loadRoles])
 
+  const onRefreshRoles = useCallback(async () => {
+    await loadRoles()
+  }, [loadRoles])
+
   const onRefreshParentCategories = useCallback(async () => {
     await loadRevenueCategories()
   }, [loadRevenueCategories])
@@ -834,7 +834,7 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
   }, [loadRevenueSubscriptions, loadRevenueCategories, loadRevenueStreams])
 
   const onViewIncidentDetails = () => {
-    navigateTo('incidents-summary')
+    navigateTo('incidents-incidents')
   }
 
   const onRefreshStreams = useCallback(async () => {
@@ -856,7 +856,10 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
     await loadRevenueSubcategories(undefined)
   }, [loadRouteCharts, loadRevenueSubcategories])
 
+  const muiTheme = useMemo(() => createDashboardMuiTheme(darkMode), [darkMode])
+
   return (
+    <ThemeProvider theme={muiTheme}>
     <div
       className={`dashboard-root ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
     >
@@ -865,7 +868,7 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
         aria-label="Main navigation"
       >
         <div className="sidebar-header">
-          <span className="sidebar-logo">{sidebarCollapsed ? 'D' : 'DMMP'}</span>
+          <span className="sidebar-logo">{sidebarCollapsed ? '' : 'Kla Konnect'}</span>
           <button
             type="button"
             className="sidebar-toggle"
@@ -882,22 +885,12 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
             if (item.children) {
               const isIncidentGroup = item.key === 'incidents'
               const isNewsGroup = item.key === 'news'
-              const isMobilityGroup = item.key === 'mobility'
-              const isRevenueAssuranceGroup = item.key === 'revenue-assurance'
               const isActiveGroup = isIncidentGroup
                 ? isIncidentsActive
-                : isNewsGroup
-                  ? isNewsActive
-                  : isMobilityGroup
-                    ? isMobilityActive
-                    : isRevenueAssuranceActive
+                : isNewsActive
               const isExpanded = isIncidentGroup
                 ? incidentsExpanded
-                : isNewsGroup
-                  ? newsExpanded
-                  : isMobilityGroup
-                    ? mobilityExpanded
-                    : revenueAssuranceExpanded
+                : newsExpanded
               return (
                 <div key={item.key} className="sidebar-nav-group">
                   <button
@@ -909,9 +902,6 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
                       } else {
                         if (isIncidentGroup) setIncidentsExpanded((e) => !e)
                         else if (isNewsGroup) setNewsExpanded((e) => !e)
-                        else if (isMobilityGroup) setMobilityExpanded((e) => !e)
-                        else if (isRevenueAssuranceGroup)
-                          setRevenueAssuranceExpanded((e) => !e)
                       }
                     }}
                     aria-expanded={!sidebarCollapsed ? isExpanded : undefined}
@@ -1236,7 +1226,6 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
           dashboardVehiclesCompliantCount={dashboardVehiclesCompliantCount}
           dashboardVehiclesInReviewCount={dashboardVehiclesInReviewCount}
           avgResolutionHours={avgResolutionHours}
-          incidentData={incidentData}
           incidentRecords={incidentRecords}
           cityAlertRecords={cityAlertRecords}
           catData={catData}
@@ -1276,6 +1265,7 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
           onRefreshUsers={onRefreshUsers}
           onRefreshParentCategories={onRefreshParentCategories}
           onRefreshSubscriptions={onRefreshSubscriptions}
+          onRefreshRoles={onRefreshRoles}
           usersActiveCount={dashboardUsersActiveCount}
           incidentsVsTimeData={incidentsVsTimeData}
           incidentsByCategoryData={incidentsByCategoryData}
@@ -1283,6 +1273,7 @@ function Dashboard({ userName, onLogout }: DashboardProps) {
         />
                         </div>
     </div>
+    </ThemeProvider>
   )
 }
 

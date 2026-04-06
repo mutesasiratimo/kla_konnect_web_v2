@@ -21,14 +21,24 @@ export type StoredSession = {
 const getBaseUrl = (): string => {
   const env = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
   if (env) return env.replace(/\/$/, '')
-  if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      return window.location.origin
-    }
-    return 'http://localhost:5173'
-  }
-  return 'http://109.123.241.160:8041'
-  // return 'http://localhost:8041'  
+  // Default to the API origin directly (avoid relying on the dev proxy).
+  // For non-local environments, set VITE_API_URL in the build/runtime env.
+  // return 'http://109.123.241.160:8041'
+  return 'http://172.16.0.160:32257'
+}
+
+/** Base URL to resolve media/attachment URLs against. */
+const getApiMediaBaseUrl = (): string => getBaseUrl().replace(/\/$/, '')
+
+export function resolveApiMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  const raw = String(url).trim()
+  if (!raw) return null
+  if (/^(https?:)?\/\//i.test(raw)) return raw
+  if (/^(data:|blob:)/i.test(raw)) return raw
+  const base = getApiMediaBaseUrl().replace(/\/$/, '')
+  const path = raw.startsWith('/') ? raw : `/${raw}`
+  return `${base}${path}`
 }
 
 export function getToken(): string | null {

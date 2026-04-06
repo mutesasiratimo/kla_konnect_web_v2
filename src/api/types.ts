@@ -144,6 +144,36 @@ export type RoleRead = {
   permissions?: string[] | null
 }
 
+/** Response from GET /roles/with-permissions and detailed role endpoints. */
+export type RoleWithPermissionsRead = {
+  id: string
+  name: string
+  description?: string | null
+  is_system: boolean
+  permissions: string[]
+}
+
+export type RoleCreateBody = {
+  id?: string | null
+  name: string
+  description?: string | null
+  permissions?: string[]
+  is_system?: boolean
+  createdby?: string | null
+}
+
+export type RoleUpdateBody = {
+  name?: string | null
+  description?: string | null
+  permissions?: string[] | null
+  updatedby?: string | null
+}
+
+export type RolePermissionsSetBody = {
+  permissions: string[]
+  updatedby?: string | null
+}
+
 export type RevenueCategoryRead = {
   code: string
   name: string
@@ -520,8 +550,13 @@ export type IncidentRead = {
   status: IncidentWorkflowStatus
   id: string
   upvotes: number
+  assigned_role_id?: string | null
+  likes_count?: number
+  dislikes_count?: number
+  views_count?: number
   datecreated: string
   createdby?: string | null
+  reported_by?: UserRead | null
   dateupdated?: string | null
   updatedby?: string | null
 }

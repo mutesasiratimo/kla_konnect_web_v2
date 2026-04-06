@@ -1,4 +1,5 @@
 import { apiRequest, clearToken, setSession, uploadFile } from './client'
+import { coercePermissionStringList } from '../utils/rolePermissions'
 import type {
   StageCreate,
   StageRead,
@@ -10,6 +11,10 @@ import type {
   UserRead,
   UserUpdate,
   RoleRead,
+  RoleWithPermissionsRead,
+  RoleCreateBody,
+  RoleUpdateBody,
+  RolePermissionsSetBody,
   UserLogin,
   LoginResponse,
   RevenueCategoryCreate,
@@ -169,6 +174,10 @@ export const users = {
     })
   },
 
+  get(id: string): Promise<UserRead> {
+    return apiRequest<UserRead>(`${base}/users/${id}`)
+  },
+
   update(id: string, body: UserUpdate): Promise<UserRead> {
     return apiRequest<UserRead>(`${base}/users/${id}`, {
       method: 'PATCH',
@@ -184,6 +193,72 @@ export const users = {
 export const roles = {
   list(): Promise<RoleRead[]> {
     return apiRequest<RoleRead[]>(`${base}/roles`)
+  },
+
+  listWithPermissions(): Promise<RoleWithPermissionsRead[]> {
+    return apiRequest<RoleWithPermissionsRead[]>(
+      `${base}/roles/with-permissions`,
+    )
+  },
+
+  listAllPermissions(): Promise<string[]> {
+    return apiRequest<unknown>(`${base}/roles/permissions`).then(
+      coercePermissionStringList,
+    )
+  },
+
+  get(id: string): Promise<RoleWithPermissionsRead> {
+    return apiRequest<RoleWithPermissionsRead>(`${base}/roles/${id}`).then(
+      (raw) => ({
+        id: raw.id,
+        name: raw.name,
+        description: raw.description ?? null,
+        is_system: Boolean(raw.is_system),
+        permissions: coercePermissionStringList(
+          (raw as { permissions?: unknown }).permissions,
+        ),
+      }),
+    )
+  },
+
+  create(body: RoleCreateBody): Promise<RoleWithPermissionsRead> {
+    return apiRequest<RoleWithPermissionsRead>(`${base}/roles`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  update(id: string, body: RoleUpdateBody): Promise<RoleWithPermissionsRead> {
+    return apiRequest<RoleWithPermissionsRead>(`${base}/roles/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+
+  setPermissions(
+    id: string,
+    body: RolePermissionsSetBody,
+  ): Promise<RoleWithPermissionsRead> {
+    return apiRequest<RoleWithPermissionsRead>(
+      `${base}/roles/${id}/permissions`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      },
+    )
+  },
+
+  delete(
+    id: string,
+    opts?: { hard?: boolean; force_system?: boolean },
+  ): Promise<unknown> {
+    const params = new URLSearchParams()
+    if (opts?.hard) params.set('hard', 'true')
+    if (opts?.force_system) params.set('force_system', 'true')
+    const qs = params.toString()
+    return apiRequest(`${base}/roles/${id}${qs ? `?${qs}` : ''}`, {
+      method: 'DELETE',
+    })
   },
 }
 
@@ -475,6 +550,105 @@ export const analytics = {
       { params: query },
     )
   },
+
+  /** KCCA-style reports: `start_date` / `end_date` as `YYYY-MM-DD`. */
+  incidentsOverview(params: {
+    start_date: string
+    end_date: string
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/incidents/overview`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+      },
+    })
+  },
+
+  incidentsByCategoryReport(params: {
+    start_date: string
+    end_date: string
+    include_city_reports?: boolean
+    top_n?: number
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/incidents/by-category`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+        include_city_reports: String(params.include_city_reports ?? false),
+        top_n: String(params.top_n ?? 10),
+      },
+    })
+  },
+
+  incidentsHotspots(params: {
+    start_date: string
+    end_date: string
+    include_city_reports?: boolean
+    top_n?: number
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/incidents/hotspots`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+        include_city_reports: String(params.include_city_reports ?? false),
+        top_n: String(params.top_n ?? 10),
+      },
+    })
+  },
+
+  incidentsTimeSeries(params: {
+    start_date: string
+    end_date: string
+    granularity: string
+    include_city_reports?: boolean
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/incidents/time-series`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+        granularity: params.granularity,
+        include_city_reports: String(params.include_city_reports ?? false),
+      },
+    })
+  },
+
+  incidentsResolutionTime(params: {
+    start_date: string
+    end_date: string
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/incidents/resolution-time`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+      },
+    })
+  },
+
+  categoriesPerformance(params: {
+    start_date: string
+    end_date: string
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/categories/performance`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+      },
+    })
+  },
+
+  usersActivity(params: {
+    start_date: string
+    end_date: string
+    user_type: string
+  }): Promise<unknown> {
+    return apiRequest<unknown>(`${base}/analytics/users/activity`, {
+      params: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+        user_type: params.user_type,
+      },
+    })
+  },
 }
 
 export const incidentCategories = {
@@ -579,6 +753,30 @@ export const incidents = {
         body: JSON.stringify(body),
       },
     )
+  },
+
+  listAttachments(incidentId: string): Promise<IncidentAttachmentRead[]> {
+    return apiRequest<IncidentAttachmentRead[]>(`${base}/incidents/${incidentId}/attachments`)
+  },
+
+  deleteAttachment(incidentId: string, attachmentId: string): Promise<void> {
+    return apiRequest<void>(`${base}/incidents/${incidentId}/attachments/${attachmentId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  setState(id: string, status: string): Promise<IncidentRead> {
+    return apiRequest<IncidentRead>(`${base}/incidents/state`, {
+      method: 'POST',
+      body: JSON.stringify({ id, status }),
+    })
+  },
+
+  assignToRole(incidentId: string, role_id: string): Promise<any> {
+    return apiRequest<any>(`${base}/incidents/${incidentId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ role_id }),
+    })
   },
 
   delete(id: string, hard = false): Promise<void> {

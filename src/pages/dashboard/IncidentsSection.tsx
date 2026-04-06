@@ -1,5 +1,4 @@
 import type { IncidentCategoryRead, IncidentRead } from '../../api/types'
-import { IncidentSummary } from '../../components/incidents/IncidentSummary'
 import { IncidentList } from '../../components/incidents/IncidentList'
 import { IncidentCategories } from '../../components/incidents/IncidentCategories'
 import type { IncidentDateRangeFilter } from './pageTypes'
@@ -19,7 +18,6 @@ interface IncidentsSectionProps {
   liveIncidentsCount: number
   resolvedIncidentsCount: number
   avgResolutionHours: number | null
-  incidentData: IncidentRead[]
   incidentRecords: IncidentRead[]
   cityAlertRecords: IncidentRead[]
   catData: IncidentCategoryRead[]
@@ -41,7 +39,6 @@ export function IncidentsSection({
   liveIncidentsCount,
   resolvedIncidentsCount,
   avgResolutionHours,
-  incidentData,
   incidentRecords,
   cityAlertRecords,
   catData,
@@ -54,9 +51,6 @@ export function IncidentsSection({
       {currentPage === 'incidents' && (
         <div className="dashboard-page">
           <h1 className="dashboard-page-title">Incidents</h1>
-          <p className="dashboard-page-lead">
-            Overview of all reported incidents across the network.
-          </p>
           <div
             className="dashboard-filters"
             style={{ marginTop: '1rem', marginBottom: '1rem' }}
@@ -156,29 +150,10 @@ export function IncidentsSection({
           </div>
         </div>
       )}
-      {currentPage === 'incidents-summary' && (
-        <div className="dashboard-page">
-          <h1 className="dashboard-page-title">Incidents — Summary</h1>
-          <p className="dashboard-page-lead">
-            High-level summary of incident statistics.
-          </p>
-          {incidentsLoadError && (
-            <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>
-              {incidentsLoadError}
-            </p>
-          )}
-          <IncidentSummary incidents={incidentData} />
-        </div>
-      )}
       {currentPage === 'incidents-incidents' && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
-            <div>
-              <h1 className="dashboard-page-title">Incidents — Records</h1>
-              <p className="dashboard-page-lead">
-                Browse and manage individual incident records.
-              </p>
-            </div>
+            <h1 className="dashboard-page-title">Incidents — Records</h1>
           </div>
           {incidentsLoadError && (
             <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>
@@ -196,12 +171,7 @@ export function IncidentsSection({
       {(currentPage === 'incidents-city-alerts' || currentPage === 'city-alerts') && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
-            <div>
-              <h1 className="dashboard-page-title">Incidents — City Alerts</h1>
-              <p className="dashboard-page-lead">
-                Browse and manage city alerts.
-              </p>
-            </div>
+            <h1 className="dashboard-page-title">Incidents — City Alerts</h1>
           </div>
           {incidentsLoadError && (
             <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>
@@ -220,12 +190,7 @@ export function IncidentsSection({
       {currentPage === 'incidents-categories' && (
         <div className="dashboard-page">
           <div className="dashboard-page-header-row">
-            <div>
-              <h1 className="dashboard-page-title">Incidents — Categories</h1>
-              <p className="dashboard-page-lead">
-                Define and manage incident category types.
-              </p>
-            </div>
+            <h1 className="dashboard-page-title">Incidents — Categories</h1>
           </div>
           {incidentsLoadError && (
             <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>

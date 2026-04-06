@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type { NewsCategoryRead } from '../../api/types'
 import { newsCategories as api } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
 
 interface NewsCategoriesProps {
   categories: NewsCategoryRead[]
@@ -27,15 +28,6 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
   const [editTarget, setEditTarget] = useState<NewsCategoryRead | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-  const totalPages = Math.max(1, Math.ceil(categories.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedCategories = categories.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
-
   const openCreate = () => {
     setEditTarget(null)
     setForm(emptyForm())
@@ -104,6 +96,63 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
       window.alert('Could not archive news category.')
     }
   }
+
+  const columns: GridColDef<NewsCategoryRead>[] = [
+    { field: 'name', headerName: 'Name', flex: 1, minWidth: 140 },
+    {
+      field: 'description',
+      headerName: 'Description',
+      flex: 1,
+      minWidth: 180,
+      valueGetter: (_v, r) => r.description || '—',
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 124,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ width: 30, height: 30, padding: 0 }}
+            title="View"
+            aria-label="View category"
+            onClick={() =>
+              window.alert(
+                `${params.row.name}\n\n${params.row.description || 'No description'}`,
+              )
+            }
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ width: 30, height: 30, padding: 0 }}
+            title="Edit"
+            aria-label="Edit category"
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ width: 30, height: 30, padding: 0, color: '#ef4444' }}
+            title="Archive"
+            aria-label="Archive category"
+            onClick={() => void handleDelete(params.row.id)}
+          >
+            <i className="fa fa-archive" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
@@ -184,76 +233,11 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Description</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedCategories.map((row) => (
-              <tr key={row.id}>
-                <td>{row.name}</td>
-                <td>{row.description || '—'}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0 }}
-                      title="View"
-                      aria-label="View category"
-                      onClick={() =>
-                        window.alert(
-                          `${row.name}\n\n${row.description || 'No description'}`,
-                        )
-                      }
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0 }}
-                      title="Edit"
-                      aria-label="Edit category"
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0, color: '#ef4444' }}
-                      title="Archive"
-                      aria-label="Archive category"
-                      onClick={() => handleDelete(row.id)}
-                    >
-                      <i className="fa fa-archive" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {categories.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            No news categories yet.
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={categories.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
-          }}
+        <DashboardDataGrid<NewsCategoryRead>
+          rows={categories}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{ noRowsLabel: 'No news categories yet.' }}
         />
       </div>
     </div>

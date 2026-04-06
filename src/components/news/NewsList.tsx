@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type {
   NewsArticleCreate,
   NewsArticleRead,
@@ -7,8 +8,9 @@ import type {
 import { newsArticles as api } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
-import { getSession } from '../../api/client'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { getSession, resolveApiMediaUrl } from '../../api/client'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { alertError, confirmAction } from '../../utils/alerts'
 
 interface NewsListProps {
   articles: NewsArticleRead[]
@@ -49,18 +51,9 @@ export const NewsList: React.FC<NewsListProps> = ({
     emptyForm(categories[0]?.id ?? ''),
   )
   const [saving, setSaving] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-
   const categoryNameById = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.id, c.name])),
     [categories],
-  )
-  const totalPages = Math.max(1, Math.ceil(articles.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedArticles = articles.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
   )
 
   const resetAndOpenCreate = () => {
@@ -111,7 +104,7 @@ export const NewsList: React.FC<NewsListProps> = ({
       await onRefresh()
     } catch (error) {
       console.error(error)
-      window.alert('Could not create news article.')
+      await alertError('Failed', 'Could not create news article.')
     } finally {
       setSaving(false)
     }
@@ -135,22 +128,89 @@ export const NewsList: React.FC<NewsListProps> = ({
       await onRefresh()
     } catch (error) {
       console.error(error)
-      window.alert('Could not update news article.')
+      await alertError('Failed', 'Could not update news article.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleArchive = async (id: string) => {
-    if (!window.confirm('Archive this article?')) return
+    const ok = await confirmAction({ title: 'Archive this article?', confirmButtonText: 'Archive' })
+    if (!ok) return
     try {
       await api.delete(id, false)
       await onRefresh()
     } catch (error) {
       console.error(error)
-      window.alert('Could not archive news article.')
+      await alertError('Failed', 'Could not archive news article.')
     }
   }
+
+  const columns: GridColDef<NewsArticleRead>[] = [
+    { field: 'title', headerName: 'Title', flex: 1, minWidth: 160 },
+    {
+      field: 'category_id',
+      headerName: 'Category',
+      flex: 1,
+      minWidth: 120,
+      valueGetter: (_v, row) => categoryNameById[row.category_id] || '—',
+    },
+    {
+      field: 'status',
+      headerName: 'Status',
+      width: 110,
+      valueGetter: (_v, row) => statusLabel(row.status),
+    },
+    {
+      field: 'datecreated',
+      headerName: 'Created',
+      flex: 1,
+      minWidth: 160,
+      valueGetter: (_v, row) => new Date(row.datecreated).toLocaleString(),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 124,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ width: 30, height: 30, padding: 0 }}
+            title="View"
+            aria-label="View article"
+            onClick={() => setViewTarget(params.row)}
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ width: 30, height: 30, padding: 0 }}
+            title="Edit"
+            aria-label="Edit article"
+            onClick={() => openEdit(params.row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ width: 30, height: 30, padding: 0, color: '#ef4444' }}
+            title="Archive"
+            aria-label="Archive article"
+            onClick={() => void handleArchive(params.row.id)}
+          >
+            <i className="fa fa-archive" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
@@ -168,72 +228,80 @@ export const NewsList: React.FC<NewsListProps> = ({
         wide
       >
         <form className="dashboard-dialog-form" onSubmit={handleCreate}>
-          <label className="dashboard-dialog-field">
-            <span>Title *</span>
-            <input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              required
-            />
-          </label>
-          <label className="dashboard-dialog-field">
-            <span>Category *</span>
-            <select
-              className="dashboard-dialog-select"
-              value={form.category_id}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, category_id: e.target.value }))
-              }
-              required
-            >
-              <option value="">Select category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <ImageUploadDropzone
-            label="Article image"
-            valueUrl={form.image.trim() || null}
-            onUrlChange={(url) => setForm((f) => ({ ...f, image: url ?? '' }))}
-            disabled={saving}
-          />
-          <label className="dashboard-dialog-field">
-            <span>Body *</span>
-            <textarea
-              value={form.body}
-              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
-              required
-            />
-          </label>
-          <label className="dashboard-dialog-field">
-            <span>Source URL *</span>
-            <input
-              value={form.url}
-              onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-              placeholder="https://..."
-              required
-            />
-          </label>
-          <label className="dashboard-dialog-field">
-            <span>Status</span>
-            <select
-              className="dashboard-dialog-select"
-              value={form.status}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  status: Number(e.target.value) as NewsArticleStatus,
-                }))
-              }
-            >
-              <option value={0}>Draft</option>
-              <option value={1}>Published</option>
-              <option value={2}>Archived</option>
-            </select>
-          </label>
+          <div className="dashboard-dialog-side-image">
+            <div className="dashboard-dialog-side-image__media">
+              <div className="incident-details-image-pane dashboard-dialog-side-image__pane-fill">
+                <ImageUploadDropzone
+                  label="Article image"
+                  valueUrl={form.image.trim() || null}
+                  onUrlChange={(url) => setForm((f) => ({ ...f, image: url ?? '' }))}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+            <div className="dashboard-dialog-side-image__fields">
+              <label className="dashboard-dialog-field">
+                <span>Title *</span>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Category *</span>
+                <select
+                  className="dashboard-dialog-select"
+                  value={form.category_id}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, category_id: e.target.value }))
+                  }
+                  required
+                >
+                  <option value="">Select category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Body *</span>
+                <textarea
+                  value={form.body}
+                  onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Source URL *</span>
+                <input
+                  value={form.url}
+                  onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+                  placeholder="https://..."
+                  required
+                />
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Status</span>
+                <select
+                  className="dashboard-dialog-select"
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      status: Number(e.target.value) as NewsArticleStatus,
+                    }))
+                  }
+                >
+                  <option value={0}>Draft</option>
+                  <option value={1}>Published</option>
+                  <option value={2}>Archived</option>
+                </select>
+              </label>
+            </div>
+          </div>
           <div className="dashboard-dialog-actions">
             <button type="button" className="secondary-button" onClick={closeDialogs}>
               Cancel
@@ -253,70 +321,78 @@ export const NewsList: React.FC<NewsListProps> = ({
         wide
       >
         <form className="dashboard-dialog-form" onSubmit={handleUpdate}>
-          <label className="dashboard-dialog-field">
-            <span>Title *</span>
-            <input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              required
-            />
-          </label>
-          <label className="dashboard-dialog-field">
-            <span>Category *</span>
-            <select
-              className="dashboard-dialog-select"
-              value={form.category_id}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, category_id: e.target.value }))
-              }
-              required
-            >
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <ImageUploadDropzone
-            label="Article image"
-            valueUrl={form.image.trim() || null}
-            onUrlChange={(url) => setForm((f) => ({ ...f, image: url ?? '' }))}
-            disabled={saving}
-          />
-          <label className="dashboard-dialog-field">
-            <span>Body *</span>
-            <textarea
-              value={form.body}
-              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
-              required
-            />
-          </label>
-          <label className="dashboard-dialog-field">
-            <span>Source URL *</span>
-            <input
-              value={form.url}
-              onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-              required
-            />
-          </label>
-          <label className="dashboard-dialog-field">
-            <span>Status</span>
-            <select
-              className="dashboard-dialog-select"
-              value={form.status}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  status: Number(e.target.value) as NewsArticleStatus,
-                }))
-              }
-            >
-              <option value={0}>Draft</option>
-              <option value={1}>Published</option>
-              <option value={2}>Archived</option>
-            </select>
-          </label>
+          <div className="dashboard-dialog-side-image">
+            <div className="dashboard-dialog-side-image__media">
+              <div className="incident-details-image-pane dashboard-dialog-side-image__pane-fill">
+                <ImageUploadDropzone
+                  label="Article image"
+                  valueUrl={form.image.trim() || null}
+                  onUrlChange={(url) => setForm((f) => ({ ...f, image: url ?? '' }))}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+            <div className="dashboard-dialog-side-image__fields">
+              <label className="dashboard-dialog-field">
+                <span>Title *</span>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Category *</span>
+                <select
+                  className="dashboard-dialog-select"
+                  value={form.category_id}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, category_id: e.target.value }))
+                  }
+                  required
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Body *</span>
+                <textarea
+                  value={form.body}
+                  onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Source URL *</span>
+                <input
+                  value={form.url}
+                  onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="dashboard-dialog-field">
+                <span>Status</span>
+                <select
+                  className="dashboard-dialog-select"
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      status: Number(e.target.value) as NewsArticleStatus,
+                    }))
+                  }
+                >
+                  <option value={0}>Draft</option>
+                  <option value={1}>Published</option>
+                  <option value={2}>Archived</option>
+                </select>
+              </label>
+            </div>
+          </div>
           <div className="dashboard-dialog-actions">
             <button type="button" className="secondary-button" onClick={closeDialogs}>
               Cancel
@@ -336,100 +412,64 @@ export const NewsList: React.FC<NewsListProps> = ({
         wide
       >
         <div className="dashboard-dialog-body">
-          {viewTarget && (
-            <div style={{ display: 'grid', gap: '0.5rem' }}>
-              <p>
-                <strong>Title:</strong> {viewTarget.title}
-              </p>
-              <p>
-                <strong>Category:</strong>{' '}
-                {categoryNameById[viewTarget.category_id] || '—'}
-              </p>
-              <p>
-                <strong>Status:</strong> {statusLabel(viewTarget.status)}
-              </p>
-              <p>
-                <strong>URL:</strong> {viewTarget.url}
-              </p>
-              <p>
-                <strong>Body:</strong> {viewTarget.body}
-              </p>
+          {viewTarget && (() => {
+            const viewImageSrc = resolveApiMediaUrl(viewTarget.image)
+            return (
+            <div className="dashboard-dialog-side-image">
+              <div className="dashboard-dialog-side-image__media">
+                <div className="dashboard-dialog-side-image__frame-square">
+                  {viewImageSrc ? (
+                    <img
+                      src={viewImageSrc}
+                      alt=""
+                      className="incident-details-image dashboard-dialog-side-image__frame-img"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <p className="incident-details-image-empty">No article image</p>
+                  )}
+                </div>
+              </div>
+              <div
+                className="dashboard-dialog-side-image__fields"
+                style={{ display: 'grid', gap: '0.5rem' }}
+              >
+                <p>
+                  <strong>Title:</strong> {viewTarget.title}
+                </p>
+                <p>
+                  <strong>Category:</strong>{' '}
+                  {categoryNameById[viewTarget.category_id] || '—'}
+                </p>
+                <p>
+                  <strong>Status:</strong> {statusLabel(viewTarget.status)}
+                </p>
+                <p>
+                  <strong>URL:</strong> {viewTarget.url}
+                </p>
+                <p>
+                  <strong>Body:</strong> {viewTarget.body}
+                </p>
+                {viewImageSrc && (
+                  <p style={{ margin: 0 }}>
+                    <a href={viewImageSrc} target="_blank" rel="noreferrer">
+                      Open image in new tab
+                    </a>
+                  </p>
+                )}
+              </div>
             </div>
-          )}
+            )
+          })()}
         </div>
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Category</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedArticles.map((row) => (
-              <tr key={row.id}>
-                <td>{row.title}</td>
-                <td>{categoryNameById[row.category_id] || '—'}</td>
-                <td>{statusLabel(row.status)}</td>
-                <td>{new Date(row.datecreated).toLocaleString()}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0 }}
-                      title="View"
-                      aria-label="View article"
-                      onClick={() => setViewTarget(row)}
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0 }}
-                      title="Edit"
-                      aria-label="Edit article"
-                      onClick={() => openEdit(row)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0, color: '#ef4444' }}
-                      title="Archive"
-                      aria-label="Archive article"
-                      onClick={() => handleArchive(row.id)}
-                    >
-                      <i className="fa fa-archive" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {articles.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            No news articles yet.
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={articles.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
-          }}
+        <DashboardDataGrid<NewsArticleRead>
+          rows={articles}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{ noRowsLabel: 'No news articles yet.' }}
         />
       </div>
     </div>

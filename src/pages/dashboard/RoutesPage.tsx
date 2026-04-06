@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import { routeCharts } from '../../api/endpoints'
 import type { RevenueSubcategoryRead, RouteChartCreate, RouteChartRead } from '../../api/types'
-import { DataTablePagination } from '../../components/table/DataTablePagination'
+import { DashboardDataGrid } from '../../components/table/DashboardDataGrid'
 import { DashboardDialog } from '../../components/DashboardDialog'
 import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
 
@@ -69,8 +70,6 @@ export function RoutesPage({
   const placesServiceRef = useRef<any>(null)
   const [saving, setSaving] = useState(false)
   const [filterText, setFilterText] = useState('')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
   const subcategoryNameById = useMemo(
     () => Object.fromEntries(revenueSubcategoryData.map((s) => [s.id, s.name])),
     [revenueSubcategoryData],
@@ -90,10 +89,6 @@ export function RoutesPage({
       return blob.includes(q)
     })
   }, [routeChartsData, filterText, subcategoryNameById])
-
-  useEffect(() => {
-    setPage(1)
-  }, [filterText, routeChartsData.length])
 
   useEffect(() => {
     const key = GOOGLE_MAPS_API_KEY.trim()
@@ -192,13 +187,6 @@ export function RoutesPage({
     }, 220)
     return () => window.clearTimeout(t)
   }, [form.end_address, placesReady])
-
-  const totalPages = Math.max(1, Math.ceil(filteredRoutes.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedRoutes = filteredRoutes.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -362,17 +350,74 @@ export function RoutesPage({
     }
   }
 
-  const iconBtnStyle: React.CSSProperties = { width: 30, height: 30, padding: 0 }
+  const iconBtnStyle: CSSProperties = { width: 30, height: 30, padding: 0 }
+
+  const columns: GridColDef<RouteChartRead>[] = [
+    { field: 'name', headerName: 'Route name', flex: 1, minWidth: 120 },
+    { field: 'start_address', headerName: 'Start', flex: 1.2, minWidth: 140 },
+    { field: 'end_address', headerName: 'End', flex: 1.2, minWidth: 140 },
+    {
+      field: 'length',
+      headerName: 'Distance (km)',
+      type: 'number',
+      width: 130,
+      valueFormatter: (value) => (value != null ? String(value) : ''),
+    },
+    {
+      field: 'revenue_subcategory_id',
+      headerName: 'Subcategory',
+      flex: 0.9,
+      minWidth: 120,
+      valueGetter: (_v, row) =>
+        subcategoryNameById[row.revenue_subcategory_id] ?? row.revenue_subcategory_id,
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      sortable: false,
+      filterable: false,
+      width: 130,
+      renderCell: ({ row }) => (
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtnStyle}
+            title="View"
+            aria-label="View route chart"
+            onClick={() => setViewTarget(row)}
+          >
+            <i className="fa fa-eye" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={iconBtnStyle}
+            title="Edit"
+            aria-label="Edit route chart"
+            onClick={() => openEdit(row)}
+          >
+            <i className="fa fa-pencil" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ ...iconBtnStyle, color: '#ef4444' }}
+            title="Delete"
+            aria-label="Delete route chart"
+            onClick={() => void handleDelete(row.id)}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div className="dashboard-page">
       <div className="dashboard-page-header-row">
-        <div>
-          <h1 className="dashboard-page-title">Route charts</h1>
-          <p className="dashboard-page-lead">
-            Configure and monitor operational routes.
-          </p>
-        </div>
+        <h1 className="dashboard-page-title">Route charts</h1>
         <button type="button" className="primary-button" onClick={openCreate}>
           + New Route
         </button>
@@ -717,64 +762,18 @@ export function RoutesPage({
 
       <div className="dashboard-table-shell">
         <div className="dashboard-table-scroll">
-          <table className="dashboard-table">
-            <thead>
-              <tr>
-                <th scope="col">Route name</th>
-                <th scope="col">Start</th>
-                <th scope="col">End</th>
-                <th scope="col">Distance (km)</th>
-                <th scope="col">Subcategory</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedRoutes.map((route) => (
-                <tr key={route.id}>
-                  <td>{route.name}</td>
-                  <td>{route.start_address}</td>
-                  <td>{route.end_address}</td>
-                  <td>{route.length}</td>
-                  <td>
-                    {subcategoryNameById[route.revenue_subcategory_id] ??
-                      route.revenue_subcategory_id}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                      <button type="button" className="secondary-button" style={iconBtnStyle} title="View" aria-label="View route chart" onClick={() => setViewTarget(route)}>
-                        <i className="fa fa-eye" aria-hidden="true" />
-                      </button>
-                      <button type="button" className="secondary-button" style={iconBtnStyle} title="Edit" aria-label="Edit route chart" onClick={() => openEdit(route)}>
-                        <i className="fa fa-pencil" aria-hidden="true" />
-                      </button>
-                      <button type="button" className="secondary-button" style={{ ...iconBtnStyle, color: '#ef4444' }} title="Delete" aria-label="Delete route chart" onClick={() => handleDelete(route.id)}>
-                        <i className="fa fa-trash" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DashboardDataGrid<RouteChartRead>
+            rows={filteredRoutes}
+            columns={columns}
+            getRowId={(row) => row.id}
+            localeText={{
+              noRowsLabel:
+                routeChartsData.length === 0
+                  ? 'No route charts loaded.'
+                  : 'No route charts match this filter.',
+            }}
+          />
         </div>
-        {filteredRoutes.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            {routeChartsData.length === 0
-              ? 'No route charts loaded.'
-              : 'No route charts match this filter.'}
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={filteredRoutes.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
-          }}
-        />
       </div>
     </div>
   )

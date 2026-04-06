@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import type { GridColDef } from '@mui/x-data-grid'
 import type {
   IncidentDetailRead,
   IncidentRead,
   IncidentWorkflowStatus,
 } from '../../api/types'
-import { incidents as incidentsApi, uploads } from '../../api/endpoints'
+import { incidents as incidentsApi, roles as rolesApi, uploads } from '../../api/endpoints'
+import { resolveApiMediaUrl } from '../../api/client'
 import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
 import { DashboardDialog } from '../DashboardDialog'
 import { PendingMediaDropzone, uploadKindForFile } from '../FileUploadDropzone'
-import { DataTablePagination } from '../table/DataTablePagination'
+import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { alertError, alertSuccess, confirmAction, closeAlert, showLoading } from '../../utils/alerts'
 
 interface ListProps {
   data: IncidentRead[]
@@ -21,13 +24,13 @@ interface ListProps {
 function statusLabel(status: IncidentWorkflowStatus): string {
   switch (status) {
     case '0':
-      return 'Archived'
-    case '1':
       return 'Pending'
+    case '1':
+      return 'Live'
     case '2':
       return 'Resolved'
     case '3':
-      return 'Rejected'
+      return 'Archived'
     default:
       return status
   }
@@ -35,8 +38,9 @@ function statusLabel(status: IncidentWorkflowStatus): string {
 
 function statusBadgeClass(status: IncidentWorkflowStatus): string {
   if (status === '2') return 'status-badge--success'
-  if (status === '3') return 'status-badge--danger'
-  if (status === '0') return ''
+  if (status === '3') return ''
+  if (status === '0') return 'status-badge--warning'
+  if (status === '1') return 'status-badge--danger'
   return 'status-badge--warning'
 }
 
@@ -72,12 +76,14 @@ export const IncidentList: React.FC<ListProps> = ({
   const [viewOpen, setViewOpen] = useState(false)
   const [viewLoading, setViewLoading] = useState(false)
   const [viewData, setViewData] = useState<IncidentDetailRead | null>(null)
+  const [removingImage, setRemovingImage] = useState(false)
+  const [roles, setRoles] = useState<{ id: string; name: string }[]>([])
+  const [viewStatus, setViewStatus] = useState<IncidentWorkflowStatus>('1')
+  const [viewAssigneeRoleId, setViewAssigneeRoleId] = useState<string>('')
+  const [viewDraftStatus, setViewDraftStatus] = useState<IncidentWorkflowStatus>('1')
+  const [viewDraftAssigneeRoleId, setViewDraftAssigneeRoleId] = useState<string>('')
+  const [updatingViewMeta, setUpdatingViewMeta] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-  const totalPages = Math.max(1, Math.ceil(data.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const pagedData = data.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const closeCreate = () => {
     setCreateOpen(false)
@@ -105,6 +111,20 @@ export const IncidentList: React.FC<ListProps> = ({
   useEffect(() => {
     if (!isRoadCategory) setNewFullClosure(false)
   }, [isRoadCategory])
+
+  useEffect(() => {
+    let cancelled = false
+    rolesApi
+      .list()
+      .then((items) => {
+        if (cancelled) return
+        setRoles(items.map((r) => ({ id: r.id, name: r.name })))
+      })
+      .catch((err) => console.error(err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!createAsCityAlert) return
@@ -211,6 +231,7 @@ export const IncidentList: React.FC<ListProps> = ({
         description: newDescription.trim() || null,
         isemergency: newEmergency,
         iscityreport: createAsCityAlert,
+        status: createAsCityAlert ? '1' : '0',
         address: newAddress.trim() || null,
         addresslat: newAddressLat,
         addresslong: newAddressLong,
@@ -232,7 +253,7 @@ export const IncidentList: React.FC<ListProps> = ({
       await onRefresh()
     } catch (err) {
       console.error(err)
-      window.alert('Could not register incident or upload attachments.')
+      await alertError('Failed', 'Could not register incident or upload attachments.')
     } finally {
       setSaving(false)
     }
@@ -263,38 +284,216 @@ export const IncidentList: React.FC<ListProps> = ({
       await onRefresh()
     } catch (err) {
       console.error(err)
-      window.alert('Could not update incident.')
+      await alertError('Failed', 'Could not update incident.')
     } finally {
       setSaving(false)
     }
   }
 
-  const handleView = async (id: string) => {
+  const handleView = async (row: IncidentRead) => {
     setViewOpen(true)
     setViewLoading(true)
     try {
-      const detail = await incidentsApi.get(id)
-      setViewData(detail)
+      // Avoid GET /incidents/{id} (backend may increment views on read).
+      // Render from the list row + fetch attachments separately.
+      setViewData({ ...(row as any), attachments: [] })
+      setViewStatus(row.status)
+      setViewAssigneeRoleId(row.assigned_role_id ?? '')
+      setViewDraftStatus(row.status)
+      setViewDraftAssigneeRoleId(row.assigned_role_id ?? '')
+
+      const attachments = await incidentsApi.listAttachments(row.id)
+      setViewData((prev) => (prev ? { ...prev, attachments } : prev))
     } catch (error) {
       console.error(error)
-      window.alert('Could not load incident details.')
+      await alertError('Failed', 'Could not load incident details.')
       setViewOpen(false)
     } finally {
       setViewLoading(false)
     }
   }
 
+  const saveViewMeta = async () => {
+    if (!viewData) return
+    setUpdatingViewMeta(true)
+    try {
+      showLoading('Saving...', 'Please wait')
+      let updatedRow: IncidentRead | null = null
+      if (viewDraftStatus !== viewStatus) {
+        updatedRow = await incidentsApi.setState(viewData.id, viewDraftStatus)
+      }
+      if (
+        viewDraftAssigneeRoleId &&
+        viewDraftAssigneeRoleId !== viewAssigneeRoleId
+      ) {
+        await incidentsApi.assignToRole(viewData.id, viewDraftAssigneeRoleId)
+      }
+
+      const attachments = await incidentsApi.listAttachments(viewData.id)
+      setViewData((prev) => {
+        if (!prev) return prev
+        return {
+          ...(updatedRow ? { ...prev, ...updatedRow } : prev),
+          attachments,
+        }
+      })
+
+      const nextStatus = updatedRow?.status ?? viewDraftStatus
+      setViewStatus(nextStatus)
+      setViewAssigneeRoleId(viewDraftAssigneeRoleId)
+      await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Incident updated successfully.')
+      setViewOpen(false)
+    } catch (error) {
+      console.error(error)
+      closeAlert()
+      await alertError('Failed', 'Could not save changes.')
+    } finally {
+      setUpdatingViewMeta(false)
+    }
+  }
+
   const handleArchive = async (id: string) => {
-    if (!window.confirm('Archive this incident?')) return
+    const ok = await confirmAction({
+      title: 'Archive this incident?',
+      confirmButtonText: 'Archive',
+    })
+    if (!ok) return
     try {
       // Soft delete = archive in this workflow.
       await incidentsApi.delete(id, false)
       await onRefresh()
     } catch (error) {
       console.error(error)
-      window.alert('Could not archive incident.')
+      await alertError('Failed', 'Could not archive incident.')
     }
   }
+
+  const handleRemoveImageAttachment = async (attachmentId: string) => {
+    if (!viewData) return
+    const ok = await confirmAction({
+      title: 'Remove this incident media?',
+      confirmButtonText: 'Remove',
+    })
+    if (!ok) return
+    setRemovingImage(true)
+    try {
+      await incidentsApi.deleteAttachment(viewData.id, attachmentId)
+      const attachments = await incidentsApi.listAttachments(viewData.id)
+      setViewData((prev) => (prev ? { ...prev, attachments } : prev))
+      await onRefresh()
+    } catch (error) {
+      console.error(error)
+      await alertError('Failed', 'Could not remove incident media.')
+    } finally {
+      setRemovingImage(false)
+    }
+  }
+
+  const columns: GridColDef<IncidentRead>[] = [
+      {
+        field: 'name',
+        headerName: 'Incident',
+        flex: 1,
+        minWidth: 180,
+        sortable: false,
+        renderCell: (params) => (
+          <div>
+            <div style={{ fontWeight: 600 }}>{params.row.name}</div>
+            {params.row.isemergency && (
+              <span className="status-badge status-badge--danger">Emergency</span>
+            )}
+          </div>
+        ),
+      },
+      {
+        field: 'address',
+        headerName: 'Location',
+        flex: 1,
+        minWidth: 140,
+        valueGetter: (_v, row) => row.address || 'Not specified',
+      },
+      {
+        field: 'status',
+        headerName: 'Status',
+        width: 130,
+        sortable: false,
+        renderCell: (params) => (
+          <span className={`status-badge ${statusBadgeClass(params.row.status)}`}>
+            {statusLabel(params.row.status)}
+          </span>
+        ),
+      },
+      {
+        field: 'datecreated',
+        headerName: 'Reported',
+        flex: 1,
+        minWidth: 168,
+        valueGetter: (_v, row) => new Date(row.datecreated).toLocaleString(),
+      },
+      {
+        field: 'views_count',
+        headerName: 'Views',
+        width: 88,
+        type: 'number',
+        valueGetter: (_v, row) => row.views_count ?? 0,
+      },
+      {
+        field: 'actions',
+        headerName: 'Actions',
+        width: 124,
+        sortable: false,
+        filterable: false,
+        disableColumnMenu: true,
+        renderCell: (params) => (
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.35rem',
+              flexWrap: 'nowrap',
+              alignItems: 'center',
+            }}
+          >
+            <button
+              type="button"
+              className="secondary-button"
+              style={{ width: 30, height: 30, padding: 0 }}
+              title="View"
+              aria-label="View incident"
+              onClick={() => void handleView(params.row)}
+            >
+              <i className="fa fa-eye" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              style={{ width: 30, height: 30, padding: 0 }}
+              title="Edit"
+              aria-label="Edit incident"
+              onClick={() => openEdit(params.row)}
+            >
+              <i className="fa fa-pencil" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              style={{
+                width: 30,
+                height: 30,
+                padding: 0,
+                color: '#ef4444',
+              }}
+              title="Archive"
+              aria-label="Archive incident"
+              onClick={() => void handleArchive(params.row.id)}
+            >
+              <i className="fa fa-archive" aria-hidden="true" />
+            </button>
+          </div>
+        ),
+      },
+    ]
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
@@ -528,137 +727,193 @@ export const IncidentList: React.FC<ListProps> = ({
       <DashboardDialog
         open={viewOpen}
         onClose={() => setViewOpen(false)}
-        title="Incident details"
-        titleId="incident-view-title"
+        title={createAsCityAlert ? 'Alert Details' : 'Incident Details'}
+        titleId={createAsCityAlert ? 'incident-alert-view-title' : 'incident-view-title'}
         wide
       >
         <div className="dashboard-dialog-body" style={{ whiteSpace: 'pre-wrap' }}>
           {viewLoading && <p>Loading details...</p>}
-          {!viewLoading && viewData && (
-            <div style={{ display: 'grid', gap: '0.5rem' }}>
-              <p>
-                <strong>Title:</strong> {viewData.name}
-              </p>
-              <p>
-                <strong>Status:</strong> {statusLabel(viewData.status)}
-              </p>
-              <p>
-                <strong>Address:</strong> {viewData.address || 'Not specified'}
-              </p>
-              <p>
-                <strong>Source:</strong> {viewData.iscityreport ? 'KCCA' : 'Public'}
-              </p>
-              <p>
-                <strong>Description:</strong> {viewData.description || '—'}
-              </p>
-              <p>
-                <strong>Created:</strong>{' '}
-                {new Date(viewData.datecreated).toLocaleString()}
-              </p>
-              <p>
-                <strong>Category ID:</strong> {viewData.incident_category_id}
-              </p>
-              <p>
-                <strong>Attachments:</strong> {viewData.attachments.length}
-              </p>
+          {!viewLoading && viewData && (() => {
+            const mediaAttachment = viewData.attachments.find((attachment) => {
+              const kind = attachment.attachment_type?.toLowerCase()
+              const mime = attachment.mime_type?.toLowerCase()
+              if (kind === 'image' || kind === 'video' || kind === 'audio') return true
+              if (!mime) return false
+              return (
+                mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/')
+              )
+            })
+
+            const reporterName =
+              viewData.reported_by?.full_name?.trim() ||
+              viewData.reported_by?.email?.trim() ||
+              'John Doe'
+            const reporterPhone = viewData.reported_by?.phone?.trim() || '+256 700 000 000'
+            const reporterEmail = viewData.reported_by?.email?.trim() || 'john.doe@example.com'
+
+            return (
+              <div className="incident-details-layout">
+              <div className="incident-details-media">
+                <div className="incident-details-image-pane incident-details-image-pane--square">
+                  {mediaAttachment?.url ? (
+                    <>
+                      <button
+                        type="button"
+                        className="incident-details-image-close"
+                        onClick={() => handleRemoveImageAttachment(mediaAttachment.id)}
+                        disabled={removingImage}
+                        aria-label="Remove incident media"
+                        title="Remove media"
+                      >
+                        ×
+                      </button>
+                      {(() => {
+                        const kind = mediaAttachment.attachment_type?.toLowerCase()
+                        const mime = mediaAttachment.mime_type?.toLowerCase()
+                        const isVideo = kind === 'video' || (mime ? mime.startsWith('video/') : false)
+                        const isAudio = kind === 'audio' || (mime ? mime.startsWith('audio/') : false)
+                        if (isVideo) {
+                          return (
+                            <video className="incident-details-video" controls preload="metadata">
+                              <source src={resolveApiMediaUrl(mediaAttachment.url) ?? ''} />
+                              Your browser does not support video playback.
+                            </video>
+                          )
+                        }
+                        if (isAudio) {
+                          return (
+                            <audio className="incident-details-audio" controls preload="metadata">
+                              <source src={resolveApiMediaUrl(mediaAttachment.url) ?? ''} />
+                              Your browser does not support audio playback.
+                            </audio>
+                          )
+                        }
+                        return (
+                          <img
+                            src={resolveApiMediaUrl(mediaAttachment.url) ?? ''}
+                            alt="Incident attachment"
+                            className="incident-details-image"
+                            loading="lazy"
+                          />
+                        )
+                      })()}
+                    </>
+                  ) : (
+                    <p className="incident-details-image-empty">No media attachment</p>
+                  )}
+                </div>
+                <div className="incident-details-meta">
+                  <div className="incident-details-reporter-name" title="Reporter">
+                    <span className="incident-details-reporter-badge" aria-hidden="true">
+                      <i className="fa fa-user" aria-hidden="true" />
+                    </span>
+                    <span>{reporterName}</span>
+                  </div>
+                  <div className="incident-details-reporter-contact">
+                    <i className="fa fa-phone" aria-hidden="true" />
+                    <span>{reporterPhone}</span>
+                  </div>
+                  <div className="incident-details-reporter-contact">
+                    <i className="fa fa-envelope" aria-hidden="true" />
+                    <span>{reporterEmail}</span>
+                  </div>
+                  <div className="incident-details-stats" aria-label="Engagement stats">
+                    <span className="incident-details-stat" title="Likes">
+                      <i className="fa fa-thumbs-up" aria-hidden="true" />
+                      <span className="incident-details-stat-count">
+                        {viewData.likes_count ?? 0}
+                      </span>
+                    </span>
+                    <span className="incident-details-stat" title="Dislikes">
+                      <i className="fa fa-thumbs-down" aria-hidden="true" />
+                      <span className="incident-details-stat-count">
+                        {viewData.dislikes_count ?? 0}
+                      </span>
+                    </span>
+                    <span className="incident-details-stat" title="Views">
+                      <i className="fa fa-eye" aria-hidden="true" />
+                      <span className="incident-details-stat-count">
+                        {viewData.views_count ?? 0}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="incident-details-content">
+                <p>
+                  <strong>Title:</strong> {viewData.name}
+                </p>
+                <p>
+                  <strong>Source:</strong> {viewData.iscityreport ? 'KCCA' : 'Public'}
+                </p>
+                <p>
+                  <strong>Address:</strong> {viewData.address || 'Not specified'}
+                </p>
+                <p>
+                  <strong>Description:</strong> {viewData.description || '—'}
+                </p>
+                <p>
+                  <strong>Created:</strong>{' '}
+                  {new Date(viewData.datecreated).toLocaleString()}
+                </p>
+                <div className="incident-details-controls incident-details-controls--footer">
+                  <label className="incident-details-control">
+                    <span>Status</span>
+                    <select
+                      value={viewDraftStatus}
+                      disabled={updatingViewMeta}
+                      onChange={(e) =>
+                        setViewDraftStatus(e.target.value as IncidentWorkflowStatus)
+                      }
+                    >
+                      <option value="0">Pending</option>
+                      <option value="1">Live</option>
+                      <option value="2">Resolved</option>
+                      <option value="3">Archived</option>
+                    </select>
+                  </label>
+                  <label className="incident-details-control">
+                    <span>Assignee</span>
+                    <select
+                      value={viewDraftAssigneeRoleId}
+                      disabled={updatingViewMeta}
+                      onChange={(e) => setViewDraftAssigneeRoleId(e.target.value)}
+                    >
+                      <option value="">Unassigned</option>
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="incident-details-controls-actions">
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={updatingViewMeta}
+                      onClick={() => void saveViewMeta()}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
+            )
+          })()}
         </div>
       </DashboardDialog>
 
       <div className="dashboard-table-shell">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Incident</th>
-              <th>Location</th>
-              <th>Status</th>
-              <th>Reported</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedData.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{item.name}</div>
-                  {item.isemergency && (
-                    <span className="status-badge status-badge--danger">Emergency</span>
-                  )}
-                </td>
-                <td>{item.address || 'Not specified'}</td>
-                <td>
-                  <span className={`status-badge ${statusBadgeClass(item.status)}`}>
-                    {statusLabel(item.status)}
-                  </span>
-                </td>
-                <td>{new Date(item.datecreated).toLocaleString()}</td>
-                <td>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '0.35rem',
-                      flexWrap: 'nowrap',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0 }}
-                      title="View"
-                      aria-label="View incident"
-                      onClick={() => handleView(item.id)}
-                    >
-                      <i className="fa fa-eye" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{ width: 30, height: 30, padding: 0 }}
-                      title="Edit"
-                      aria-label="Edit incident"
-                      onClick={() => openEdit(item)}
-                    >
-                      <i className="fa fa-pencil" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      style={{
-                        width: 30,
-                        height: 30,
-                        padding: 0,
-                        color: '#ef4444',
-                      }}
-                      title="Archive"
-                      aria-label="Archive incident"
-                      onClick={() => handleArchive(item.id)}
-                    >
-                      <i className="fa fa-archive" aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {data.length === 0 && (
-          <p style={{ padding: '1rem', color: 'var(--dashboard-muted, #64748b)' }}>
-            {showCreateButton
+        <DashboardDataGrid<IncidentRead>
+          rows={data}
+          columns={columns}
+          getRowId={(row) => row.id}
+          localeText={{
+            noRowsLabel: showCreateButton
               ? 'No records yet. Create one to get started.'
-              : 'No incidents found for the selected filters.'}
-          </p>
-        )}
-        <DataTablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={data.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPage(1)
-            setPageSize(size)
+              : 'No incidents found for the selected filters.',
           }}
         />
       </div>

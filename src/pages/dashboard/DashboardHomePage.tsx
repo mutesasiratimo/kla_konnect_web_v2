@@ -12,6 +12,8 @@ import {
 } from 'recharts'
 import type { IncidentCategoryRead, IncidentRead } from '../../api/types'
 import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
+import { incidents as incidentsApi } from '../../api/endpoints'
+import { resolveApiMediaUrl } from '../../api/client'
 
 interface DashboardHomePageProps {
   pendingIncidentsCount: number
@@ -101,8 +103,23 @@ export function DashboardHomePage({
   const [activeDonutIndex, setActiveDonutIndex] = useState(0)
   const googleMapsKey = GOOGLE_MAPS_API_KEY.trim()
   const mapRef = useRef<HTMLDivElement | null>(null)
+  const mapInstanceRef = useRef<unknown>(null)
+  const mapMarkersRef = useRef<Array<{ setMap?: (v: null) => void }>>([])
+  const mapInfoWindowRef = useRef<{
+    setContent?: (content: string) => void
+    open?: (opts: { map: unknown; anchor: unknown }) => void
+  } | null>(null)
+  const [recentMediaById, setRecentMediaById] = useState<
+    Record<string, { kind: 'image' | 'video' | 'audio'; url: string }>
+  >({})
   const categoryImageById = useMemo(
-    () => Object.fromEntries(incidentCategories.map((category) => [category.id, category.image ?? null])),
+    () =>
+      Object.fromEntries(
+        incidentCategories.map((category) => [
+          category.id,
+          resolveApiMediaUrl(category.image ?? null),
+        ]),
+      ),
     [incidentCategories],
   )
 
@@ -127,11 +144,50 @@ export function DashboardHomePage({
     }))
     const fallbackAnnual = [{ label: 'Current', value: 0 }]
 
-    if (timeView === 'Annual') return incidentsVsTimeData?.annual ?? fallbackAnnual
-    if (timeView === 'Quarterly')
-      return incidentsVsTimeData?.quarterly ?? fallbackQuarterly
-    return incidentsVsTimeData?.monthly ?? fallbackMonthly
+    const pick = (series: { label: string; value: number }[] | undefined, fallback: any[]) =>
+      series && series.length > 0 ? series : fallback
+
+    if (timeView === 'Annual') return pick(incidentsVsTimeData?.annual, fallbackAnnual)
+    if (timeView === 'Quarterly') return pick(incidentsVsTimeData?.quarterly, fallbackQuarterly)
+    return pick(incidentsVsTimeData?.monthly, fallbackMonthly)
   }, [timeView, incidentsVsTimeData])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadThumbs = async () => {
+      const rows = recentIncidents.slice(0, 8)
+      const entries = await Promise.all(
+        rows.map(async (incident) => {
+          try {
+            const detail = await incidentsApi.get(incident.id)
+            const first = detail.attachments?.[0]
+            const resolved = resolveApiMediaUrl(first?.url)
+            const kindRaw = first?.attachment_type?.toLowerCase()
+            const mime = first?.mime_type?.toLowerCase()
+            const kind: 'image' | 'video' | 'audio' =
+              kindRaw === 'video' || (mime ? mime.startsWith('video/') : false)
+                ? 'video'
+                : kindRaw === 'audio' || (mime ? mime.startsWith('audio/') : false)
+                  ? 'audio'
+                  : 'image'
+            return [incident.id, resolved ? { kind, url: resolved } : null] as const
+          } catch {
+            return [incident.id, null] as const
+          }
+        }),
+      )
+      if (cancelled) return
+      const next: Record<string, { kind: 'image' | 'video' | 'audio'; url: string }> = {}
+      for (const [id, media] of entries) {
+        if (media) next[id] = media
+      }
+      setRecentMediaById(next)
+    }
+    loadThumbs()
+    return () => {
+      cancelled = true
+    }
+  }, [recentIncidents])
 
   const donutData = useMemo(
     () => {
@@ -168,9 +224,10 @@ export function DashboardHomePage({
 
   const statusLabel = (status?: string | null): 'Pending' | 'Live' | 'Resolved' | 'Archived' => {
     if (status === '2') return 'Resolved'
-    if (status === '0') return 'Archived'
-    if (status === '1') return 'Pending'
-    return 'Live'
+    if (status === '3') return 'Archived'
+    if (status === '0') return 'Pending'
+    if (status === '1') return 'Live'
+    return 'Pending'
   }
 
   useEffect(() => {
@@ -191,6 +248,11 @@ export function DashboardHomePage({
             mapTypeControl?: boolean
           },
         ) => unknown
+        InfoWindow: new (opts?: { content?: string }) => {
+          setContent?: (content: string) => void
+          open?: (opts: { map: unknown; anchor: unknown }) => void
+          close?: () => void
+        }
         Polygon: new (opts: {
           paths:
             | Array<{ lat: number; lng: number }>
@@ -219,74 +281,82 @@ export function DashboardHomePage({
       }
     }
 
-    const mapEl = mapRef.current
-    const initMap = (google: GoogleLike) => {
-      const map = new google.maps.Map(mapEl, {
-        center: { lat: 0.3476, lng: 32.5825 },
-        zoom: 12,
-        mapTypeId: 'roadmap',
-        disableDefaultUI: false,
-        zoomControl: true,
-        streetViewControl: false,
-        fullscreenControl: true,
-        mapTypeControl: false,
-      })
+    const kampalaBoundary = [
+      { lat: 0.428, lng: 32.445 },
+      { lat: 0.442, lng: 32.506 },
+      { lat: 0.437, lng: 32.58 },
+      { lat: 0.425, lng: 32.64 },
+      { lat: 0.403, lng: 32.698 },
+      { lat: 0.36, lng: 32.728 },
+      { lat: 0.303, lng: 32.726 },
+      { lat: 0.267, lng: 32.699 },
+      { lat: 0.245, lng: 32.655 },
+      { lat: 0.232, lng: 32.607 },
+      { lat: 0.227, lng: 32.548 },
+      { lat: 0.236, lng: 32.488 },
+      { lat: 0.258, lng: 32.452 },
+      { lat: 0.302, lng: 32.43 },
+      { lat: 0.36, lng: 32.429 },
+    ]
 
-      // Approximate Kampala boundary polygon for visual highlighting.
-      const kampalaBoundary = [
-        { lat: 0.428, lng: 32.445 },
-        { lat: 0.442, lng: 32.506 },
-        { lat: 0.437, lng: 32.58 },
-        { lat: 0.425, lng: 32.64 },
-        { lat: 0.403, lng: 32.698 },
-        { lat: 0.36, lng: 32.728 },
-        { lat: 0.303, lng: 32.726 },
-        { lat: 0.267, lng: 32.699 },
-        { lat: 0.245, lng: 32.655 },
-        { lat: 0.232, lng: 32.607 },
-        { lat: 0.227, lng: 32.548 },
-        { lat: 0.236, lng: 32.488 },
-        { lat: 0.258, lng: 32.452 },
-        { lat: 0.302, lng: 32.43 },
-        { lat: 0.36, lng: 32.429 },
-      ]
-      const kampalaHole = [...kampalaBoundary].reverse()
+    const clearMarkers = () => {
+      mapMarkersRef.current.forEach((m) => m.setMap?.(null))
+      mapMarkersRef.current = []
+    }
 
-      const worldRing = [
-        { lat: 85, lng: -179.999 },
-        { lat: 85, lng: 179.999 },
-        { lat: -85, lng: 179.999 },
-        { lat: -85, lng: -179.999 },
-      ]
+    type MapWithDiv = { getDiv?: () => HTMLElement }
 
-      // Mask the rest of the map and leave Kampala area clear.
-      new google.maps.Polygon({
-        paths: [worldRing, kampalaHole],
-        strokeOpacity: 0,
-        fillColor: '#1f2d00',
-        fillOpacity: 0.22,
-        clickable: false,
-        map,
-      })
+    const syncMap = (google: GoogleLike) => {
+      const mapEl = mapRef.current
+      if (!mapEl) return
 
-      // Crisp boundary stroke around Kampala.
-      new google.maps.Polygon({
-        paths: kampalaBoundary,
-        strokeColor: '#9ac200',
-        strokeOpacity: 0.95,
-        strokeWeight: 2.5,
-        fillOpacity: 0,
-        clickable: false,
-        map,
-      })
+      let map = mapInstanceRef.current as MapWithDiv | null
 
-      const bounds = new google.maps.LatLngBounds()
-      kampalaBoundary.forEach((point) => bounds.extend(point))
-      ;(
-        map as {
-          fitBounds?: (b: { extend: (point: { lat: number; lng: number }) => void }) => void
-        }
-      ).fitBounds?.(bounds)
+      const sameContainer =
+        map && typeof map.getDiv === 'function' && map.getDiv() === mapEl
+
+      if (!sameContainer) {
+        clearMarkers()
+        mapInfoWindowRef.current = null
+        mapInstanceRef.current = null
+        map = new google.maps.Map(mapEl, {
+          center: { lat: 0.3476, lng: 32.5825 },
+          zoom: 12,
+          mapTypeId: 'roadmap',
+          disableDefaultUI: false,
+          zoomControl: true,
+          streetViewControl: false,
+          fullscreenControl: true,
+          mapTypeControl: false,
+        }) as MapWithDiv
+        mapInstanceRef.current = map
+
+        new google.maps.Polygon({
+          paths: kampalaBoundary,
+          strokeColor: '#9ac200',
+          strokeOpacity: 0.95,
+          strokeWeight: 2.5,
+          fillOpacity: 0,
+          clickable: false,
+          map,
+        })
+
+        mapInfoWindowRef.current = new google.maps.InfoWindow()
+
+        const bounds = new google.maps.LatLngBounds()
+        kampalaBoundary.forEach((point) => bounds.extend(point))
+        ;(
+          map as {
+            fitBounds?: (b: { extend: (point: { lat: number; lng: number }) => void }) => void
+          }
+        ).fitBounds?.(bounds)
+      }
+
+      const mapInstance = mapInstanceRef.current
+      if (!mapInstance) return
+
+      clearMarkers()
+      const infoWindow = mapInfoWindowRef.current
 
       mapIncidents.forEach((incident) => {
         if (
@@ -298,9 +368,9 @@ export function DashboardHomePage({
           return
         }
         const iconUrl = categoryImageById[incident.incident_category_id]
-        new google.maps.Marker({
+        const marker = new google.maps.Marker({
           position: { lat: Number(incident.addresslat), lng: Number(incident.addresslong) },
-          map,
+          map: mapInstance,
           title: incident.name || 'Incident',
           icon: iconUrl
             ? {
@@ -309,6 +379,27 @@ export function DashboardHomePage({
               }
             : undefined,
         })
+
+        mapMarkersRef.current.push(marker as { setMap?: (v: null) => void })
+
+        ;(marker as { addListener?: (ev: string, fn: () => void) => void }).addListener?.(
+          'click',
+          () => {
+            const title = (incident.name || 'Incident').trim()
+            const address = (incident.address || 'Address not provided').trim()
+            const when = timeAgo(incident.datecreated)
+            const esc = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+            const html = `
+            <div style="max-width: 260px;">
+              <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px;">${esc(title)}</div>
+              <div style="color: #334155; font-size: 12px; margin-bottom: 6px;">${esc(address)}</div>
+              <div style="color: #64748b; font-size: 12px;">${esc(when)}</div>
+            </div>
+          `
+            infoWindow?.setContent?.(html)
+            infoWindow?.open?.({ map: mapInstance, anchor: marker })
+          },
+        )
       })
     }
 
@@ -317,30 +408,33 @@ export function DashboardHomePage({
     ).google
 
     if (existingGoogle?.maps) {
-      initMap(existingGoogle)
-      return
-    }
-
-    ;(
-      window as Window & { google?: GoogleLike; __dmmpInitMap?: () => void }
-    ).__dmmpInitMap = () => {
-      const loaded = (
+      syncMap(existingGoogle)
+    } else {
+      ;(
         window as Window & { google?: GoogleLike; __dmmpInitMap?: () => void }
-      ).google
-      if (loaded?.maps) initMap(loaded)
+      ).__dmmpInitMap = () => {
+        const loaded = (
+          window as Window & { google?: GoogleLike; __dmmpInitMap?: () => void }
+        ).google
+        if (loaded?.maps) syncMap(loaded)
+      }
+
+      const alreadyAdded = document.querySelector(
+        'script[data-google-maps-loader="true"]',
+      )
+      if (!alreadyAdded) {
+        const script = document.createElement('script')
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsKey)}&callback=__dmmpInitMap`
+        script.async = true
+        script.defer = true
+        script.setAttribute('data-google-maps-loader', 'true')
+        document.head.appendChild(script)
+      }
     }
 
-    const alreadyAdded = document.querySelector(
-      'script[data-google-maps-loader="true"]',
-    )
-    if (alreadyAdded) return
-
-    const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsKey)}&callback=__dmmpInitMap`
-    script.async = true
-    script.defer = true
-    script.setAttribute('data-google-maps-loader', 'true')
-    document.head.appendChild(script)
+    return () => {
+      clearMarkers()
+    }
   }, [googleMapsKey, mapIncidents, categoryImageById])
 
   return (
@@ -519,12 +613,26 @@ export function DashboardHomePage({
                           <i className="fa fa-check-circle" aria-hidden="true" />
                         </span>
                       )}
-                      <img
-                        src={`https://picsum.photos/seed/incident-${incident.id}/60/60`}
-                        alt=""
-                        className="dashboard-v2-recent-thumb"
-                        loading="lazy"
-                      />
+                      {recentMediaById[incident.id]?.url ? (
+                        recentMediaById[incident.id].kind === 'video' ? (
+                          <video
+                            className="dashboard-v2-recent-thumb dashboard-v2-recent-thumb--video"
+                            src={recentMediaById[incident.id].url}
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img
+                            src={recentMediaById[incident.id].url}
+                            alt=""
+                            className="dashboard-v2-recent-thumb"
+                            loading="lazy"
+                          />
+                        )
+                      ) : (
+                        <div className="dashboard-v2-recent-thumb dashboard-v2-recent-thumb--fallback" />
+                      )}
                       <div className="dashboard-v2-recent-copy">
                         <p className="dashboard-v2-recent-title">
                           {incident.name || 'Untitled incident'}

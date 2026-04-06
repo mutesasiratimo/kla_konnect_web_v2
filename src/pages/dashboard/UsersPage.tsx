@@ -17,12 +17,7 @@ export function UsersPage({
   return (
     <div className="dashboard-page">
       <div className="dashboard-page-header-row">
-        <div>
-          <h1 className="dashboard-page-title">Users</h1>
-          <p className="dashboard-page-lead">
-            Manage platform users and access levels.
-          </p>
-        </div>
+        <h1 className="dashboard-page-title">Users</h1>
       </div>
       {usersLoadError && (
         <p className="dashboard-page-lead" style={{ color: '#ef4444' }}>

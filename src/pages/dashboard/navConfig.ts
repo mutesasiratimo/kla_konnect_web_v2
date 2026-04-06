@@ -1,7 +1,6 @@
 export type DashboardPage =
   | 'dashboard'
   | 'incidents'
-  | 'incidents-summary'
   | 'incidents-incidents'
   | 'incidents-city-alerts'
   | 'city-alerts'
@@ -33,7 +32,6 @@ export type NavItem =
 export const pageToPath: Record<DashboardPage, string> = {
   dashboard: '/dashboard',
   incidents: '/incidents',
-  'incidents-summary': '/incidents/summary',
   'incidents-incidents': '/incidents/incidents',
   'incidents-city-alerts': '/incidents/city-alerts',
   'city-alerts': '/city-alerts',
@@ -61,7 +59,6 @@ export const navItems: NavItem[] = [
     label: 'Incidents',
     icon: 'fa-exclamation-triangle',
     children: [
-      { key: 'incidents-summary', label: 'Summary' },
       { key: 'incidents-incidents', label: 'Incidents' },
       { key: 'incidents-categories', label: 'Categories' },
     ],
@@ -76,26 +73,28 @@ export const navItems: NavItem[] = [
       { key: 'news-categories', label: 'Categories' },
     ],
   },
-  {
-    key: 'mobility',
-    label: 'Mobility',
-    icon: 'fa-road',
-    children: [
-      { key: 'vehicles', label: 'Vehicles' },
-      { key: 'categories', label: 'Categories' },
-      { key: 'stages', label: 'Stages' },
-      { key: 'routes', label: 'Routes' },
-    ],
-  },
-  {
-    key: 'revenue-assurance',
-    label: 'Revenue Assurance',
-    icon: 'fa-shield',
-    children: [
-      { key: 'subscriptions', label: 'Subscriptions' },
-      { key: 'enforcements', label: 'Enforcements' },
-    ],
-  },
+  // Hidden from sidebar (restore to show Mobility + sub-pages)
+  // {
+  //   key: 'mobility',
+  //   label: 'Mobility',
+  //   icon: 'fa-road',
+  //   children: [
+  //     { key: 'vehicles', label: 'Vehicles' },
+  //     { key: 'categories', label: 'Categories' },
+  //     { key: 'stages', label: 'Stages' },
+  //     { key: 'routes', label: 'Routes' },
+  //   ],
+  // },
+  // Hidden from sidebar (restore for Revenue Assurance + sub-pages)
+  // {
+  //   key: 'revenue-assurance',
+  //   label: 'Revenue Assurance',
+  //   icon: 'fa-shield',
+  //   children: [
+  //     { key: 'subscriptions', label: 'Subscriptions' },
+  //     { key: 'enforcements', label: 'Enforcements' },
+  //   ],
+  // },
   { key: 'reports', label: 'Reports', icon: 'fa-line-chart' },
   { key: 'users', label: 'Users', icon: 'fa-user' },
   { key: 'settings', label: 'Settings', icon: 'fa-cog' },
@@ -103,7 +102,6 @@ export const navItems: NavItem[] = [
 
 export const incidentPages: DashboardPage[] = [
   'incidents',
-  'incidents-summary',
   'incidents-incidents',
   'incidents-categories',
 ]

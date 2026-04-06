@@ -15,6 +15,7 @@ interface SettingsPageViewProps {
   revenueLoadError: string | null
   onRefreshParentCategories: () => void | Promise<void>
   onRefreshSubscriptions: () => void | Promise<void>
+  onRefreshRoles: () => void | Promise<void>
 }
 
 export function SettingsPageView({
@@ -26,11 +27,11 @@ export function SettingsPageView({
   revenueLoadError,
   onRefreshParentCategories,
   onRefreshSubscriptions,
+  onRefreshRoles,
 }: SettingsPageViewProps) {
   return (
     <div className="dashboard-page">
       <h1 className="dashboard-page-title">Settings</h1>
-      <p className="dashboard-page-lead">Profile and application settings.</p>
       <SettingsPanel
         userName={userName}
         revenueParentCategories={revenueCategoryData}
@@ -40,6 +41,7 @@ export function SettingsPageView({
         revenueLoadError={revenueLoadError}
         onRefreshParentCategories={onRefreshParentCategories}
         onRefreshSubscriptions={onRefreshSubscriptions}
+        onRefreshRoles={onRefreshRoles}
       />
     </div>
   )
