@@ -10,6 +10,7 @@ import { auth, users } from '../../api/endpoints'
 import { RevenueParentCategoriesTab } from '../revenue/RevenueParentCategoriesTab'
 import { RevenueSubscriptionsCrudList } from '../revenue/RevenueSubscriptionsCrudList'
 import { RolesCrudList } from './RolesCrudList'
+import { OtpInput6, OTP_INPUT_LEN } from '../OtpInput6'
 
 export type SettingsTabId =
   | 'profile'
@@ -113,7 +114,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
     setSendingResetCode(true)
     try {
-      await auth.forgotPassword(emailAddress)
+      await auth.forgotPassword({ email: emailAddress })
       window.alert('Password reset code sent to your email.')
     } catch (err) {
       console.error(err)
@@ -129,15 +130,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       window.alert('Passwords do not match.')
       return
     }
-    if (!resetCode.trim()) {
-      window.alert('Enter the reset code sent to your email.')
+    const codeDigits = resetCode.replace(/\D/g, '')
+    if (codeDigits.length !== OTP_INPUT_LEN) {
+      window.alert(`Enter the full ${OTP_INPUT_LEN}-digit code from your email.`)
       return
     }
     setSavingPassword(true)
     try {
       await auth.resetPassword({
         email: emailAddress,
-        code: resetCode.trim(),
+        code: codeDigits,
         new_password: newPassword,
       })
       window.alert('Password updated successfully.')
@@ -222,14 +224,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     placeholder="For your reference only"
                   />
                 </label>
-                <label className="dashboard-dialog-field">
+                <div className="dashboard-dialog-field dashboard-dialog-field--otp">
                   <span>Reset code</span>
-                  <input
+                  <OtpInput6
                     value={resetCode}
-                    onChange={(e) => setResetCode(e.target.value)}
-                    placeholder="Enter code from email"
+                    onChange={setResetCode}
+                    disabled={savingPassword || sendingResetCode}
+                    aria-label="Password reset code"
                   />
-                </label>
+                </div>
                 <label className="dashboard-dialog-field">
                   <span>New password</span>
                   <input

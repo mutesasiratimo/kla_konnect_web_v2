@@ -9,7 +9,8 @@ export default defineConfig({
     proxy: {
       '/api': {
         // target: 'http://109.123.241.160:8041',
-        target: 'http://172.16.0.160:32257',
+        // target: 'http://172.16.0.160',
+        target: 'https://klakonnect.kcca.go.ug',
         changeOrigin: true,
       },
     },

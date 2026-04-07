@@ -3188,6 +3188,10 @@ button.dashboard-v2-text-link {
   color: #475569;
 }
 
+.dashboard-dialog-field--otp .otp-input-6 {
+  max-width: none;
+}
+
 .dashboard-dialog-field input,
 .dashboard-dialog-field textarea {
   padding: 10px 12px;

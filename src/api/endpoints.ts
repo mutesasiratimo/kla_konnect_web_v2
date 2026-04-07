@@ -17,6 +17,8 @@ import type {
   RolePermissionsSetBody,
   UserLogin,
   LoginResponse,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
   RevenueCategoryCreate,
   RevenueCategoryRead,
   RevenueCategoryUpdate,
@@ -90,18 +92,14 @@ export const auth = {
     clearToken()
   },
 
-  forgotPassword(email: string): Promise<Record<string, unknown>> {
+  forgotPassword(body: ForgotPasswordRequest): Promise<Record<string, unknown>> {
     return apiRequest<Record<string, unknown>>(`${base}/users/forgot-password`, {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(body),
     })
   },
 
-  resetPassword(body: {
-    email: string
-    code: string
-    new_password: string
-  }): Promise<Record<string, unknown>> {
+  resetPassword(body: ResetPasswordRequest): Promise<Record<string, unknown>> {
     return apiRequest<Record<string, unknown>>(`${base}/users/reset-password`, {
       method: 'POST',
       body: JSON.stringify(body),

@@ -434,6 +434,16 @@ export type UserLogin = {
   password: string
 }
 
+export type ForgotPasswordRequest = {
+  email: string
+}
+
+export type ResetPasswordRequest = {
+  email: string
+  code: string
+  new_password: string
+}
+
 export type UserOnboardingInput = {
   id?: string | null
   email: string
