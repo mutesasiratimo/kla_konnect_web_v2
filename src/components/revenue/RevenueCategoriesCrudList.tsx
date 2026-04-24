@@ -9,6 +9,7 @@ import { suggestedCodeFromCategoryName } from '../../utils/codeFromCategoryName'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { Checkbox } from '../ui/Checkbox'
 
 interface RevenueCategoriesCrudListProps {
   parentCategories: RevenueCategoryRead[]
@@ -318,7 +319,7 @@ export const RevenueCategoriesCrudList: React.FC<
             }
             disabled={saving}
           />
-          <label
+          <div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -326,15 +327,15 @@ export const RevenueCategoriesCrudList: React.FC<
               cursor: 'pointer',
             }}
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={form.can_hail}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, can_hail: e.target.checked }))
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, can_hail: checked }))
               }
+              ariaLabel="Can hail"
             />
             <span>Can hail (commute)</span>
-          </label>
+          </div>
           <div className="dashboard-dialog-actions">
             <button type="button" className="secondary-button" onClick={closeDialogs}>
               Cancel
@@ -401,7 +402,7 @@ export const RevenueCategoriesCrudList: React.FC<
             }
             disabled={saving}
           />
-          <label
+          <div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -409,15 +410,15 @@ export const RevenueCategoriesCrudList: React.FC<
               cursor: 'pointer',
             }}
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={form.can_hail}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, can_hail: e.target.checked }))
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, can_hail: checked }))
               }
+              ariaLabel="Can hail"
             />
             <span>Can hail (commute)</span>
-          </label>
+          </div>
           <div className="dashboard-dialog-actions">
             <button type="button" className="secondary-button" onClick={closeDialogs}>
               Cancel

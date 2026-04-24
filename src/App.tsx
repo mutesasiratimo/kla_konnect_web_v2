@@ -14,6 +14,7 @@ import {
 } from './api'
 import type { LoginUser } from './api/types'
 import { OtpInput6, OTP_INPUT_LEN } from './components/OtpInput6'
+import { Checkbox } from './components/ui/Checkbox'
 
 type AuthMode = 'login' | 'forgot' | 'reset'
 
@@ -61,6 +62,7 @@ function App() {
     password: '',
   })
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     const s = getSession()
     if (!s?.access_token || !s.user) return false
@@ -363,10 +365,14 @@ function App() {
                     </label>
 
                     <div className="form-meta-row">
-                      <label className="remember-me">
-                        <input type="checkbox" />
-                        <span>Remember me?</span>
-                      </label>
+                      <div className="remember-me">
+                        <Checkbox
+                          checked={rememberMe}
+                          onCheckedChange={setRememberMe}
+                          label="Remember me?"
+                          ariaLabel="Remember me"
+                        />
+                      </div>
                       <div className="form-meta-links">
                         <button
                           type="button"

@@ -525,6 +525,17 @@ export type IncidentCategoryTreeNode = IncidentCategoryRead & {
 // --- Incidents ---
 export type IncidentWorkflowStatus = '0' | '1' | '2' | '3'
 
+export type IncidentRecurrenceCreate = {
+  frequency?: 'daily' | 'weekly'
+  interval?: number
+  days_of_week?: number[] | null
+  timezone?: string
+  start_date: string
+  end_date: string
+  window_start: string
+  window_end: string
+}
+
 export type IncidentCreate = {
   name: string
   description?: string | null
@@ -541,6 +552,7 @@ export type IncidentCreate = {
   enddate?: string | null
   status?: IncidentWorkflowStatus
   createdby?: string | null
+  recurrence?: IncidentRecurrenceCreate | null
 }
 
 export type IncidentRead = {

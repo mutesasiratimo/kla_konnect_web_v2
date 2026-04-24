@@ -233,12 +233,7 @@
 .remember-me {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-
-.remember-me input {
-  width: 14px;
-  height: 14px;
+  gap: 8px;
 }
 
 .link-button {

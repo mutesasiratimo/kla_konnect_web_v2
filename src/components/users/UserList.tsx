@@ -5,6 +5,7 @@ import { users as usersApi } from '../../api/endpoints'
 import { getSession } from '../../api/client'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { Checkbox } from '../ui/Checkbox'
 
 interface UserListProps {
   users: UserRead[]
@@ -479,7 +480,7 @@ export const UserList: React.FC<UserListProps> = ({
                 alignItems: 'center',
               }}
             >
-              <label
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -487,18 +488,18 @@ export const UserList: React.FC<UserListProps> = ({
                   cursor: 'pointer',
                 }}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={editForm.is_active}
-                  onChange={(e) =>
+                  onCheckedChange={(checked) =>
                     setEditForm((f) =>
-                      f ? { ...f, is_active: e.target.checked } : f,
+                      f ? { ...f, is_active: checked } : f,
                     )
                   }
+                  ariaLabel="Active"
                 />
                 <span>Active</span>
-              </label>
-              <label
+              </div>
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -506,17 +507,17 @@ export const UserList: React.FC<UserListProps> = ({
                   cursor: 'pointer',
                 }}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={editForm.is_verified}
-                  onChange={(e) =>
+                  onCheckedChange={(checked) =>
                     setEditForm((f) =>
-                      f ? { ...f, is_verified: e.target.checked } : f,
+                      f ? { ...f, is_verified: checked } : f,
                     )
                   }
+                  ariaLabel="Verified"
                 />
                 <span>Verified</span>
-              </label>
+              </div>
             </div>
             <div className="dashboard-dialog-actions">
               <button type="button" className="secondary-button" onClick={closeDialogs}>

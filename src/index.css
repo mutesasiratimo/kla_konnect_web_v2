@@ -42,3 +42,131 @@ a:hover {
 button {
   font-family: inherit;
 }
+
+/* Tokens + layout hooks for @react-beauty/ui-checkbox */
+:root {
+  --space-none: 0px;
+  --space-3: 12px;
+  --components-checkbox-size: 18px;
+  --components-checkbox-border-radius: 4px;
+  --components-checkbox-gap: 8px;
+  --components-checkbox-group-gap: 8px;
+  --components-checkbox-font-size-label: 0.875rem;
+  --components-checkbox-line-height-label: 1.3;
+  --components-checkbox-font-weight-label: 500;
+  --components-checkbox-font-size-helper: 0.75rem;
+  --components-checkbox-line-height-helper: 1.2;
+  --components-checkbox-transition-duration: 0.15s;
+  --components-checkbox-transition-timing: ease-in-out;
+  --components-checkbox-colors-label: #334155;
+  --components-checkbox-colors-border-unchecked: #94a3b8;
+  --components-checkbox-colors-border-checked: #0d6efd;
+  --components-checkbox-colors-border-disabled: #cbd5e1;
+  --components-checkbox-colors-background-unchecked: #ffffff;
+  --components-checkbox-colors-background-checked: #0d6efd;
+  --components-checkbox-colors-background-disabled: #f1f5f9;
+  --components-checkbox-colors-checkmark: #ffffff;
+  --components-checkbox-colors-focus-ring: rgba(13, 110, 253, 0.35);
+  --components-checkbox-colors-helper-text-normal: #64748b;
+  --components-checkbox-colors-helper-text-error: #dc2626;
+}
+
+.app-checkbox-group {
+  display: inline-flex;
+  width: auto;
+}
+
+.app-checkbox-group .react-beauty-el-checkbox-container {
+  width: auto;
+}
+
+.react-beauty-el-checkbox-group-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--components-checkbox-group-gap);
+}
+
+.react-beauty-el-checkbox-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--components-checkbox-gap);
+  position: relative;
+  width: 100%;
+}
+
+.react-beauty-el-checkbox-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.react-beauty-el-checkbox-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--components-checkbox-size);
+  height: var(--components-checkbox-size);
+  border-radius: var(--components-checkbox-border-radius);
+  border: 1px solid var(--components-checkbox-colors-border-unchecked);
+  background-color: var(--components-checkbox-colors-background-unchecked);
+  transition:
+    border-color var(--components-checkbox-transition-duration) var(--components-checkbox-transition-timing),
+    background-color var(--components-checkbox-transition-duration) var(--components-checkbox-transition-timing);
+}
+
+.react-beauty-el-checkbox-box::after {
+  content: '';
+  position: absolute;
+  width: 30%;
+  height: 60%;
+  border: solid var(--components-checkbox-colors-checkmark);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0) translateY(-15%) translateX(-10%);
+  opacity: 0;
+  transition:
+    transform var(--components-checkbox-transition-duration) var(--components-checkbox-transition-timing),
+    opacity var(--components-checkbox-transition-duration) var(--components-checkbox-transition-timing);
+}
+
+[data-checked='true'] .react-beauty-el-checkbox-box {
+  border-color: var(--components-checkbox-colors-border-checked);
+  background-color: var(--components-checkbox-colors-background-checked);
+}
+
+[data-checked='true'] .react-beauty-el-checkbox-box::after {
+  transform: rotate(45deg) scale(1) translateY(-15%) translateX(-10%);
+  opacity: 1;
+}
+
+.react-beauty-el-checkbox-input {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  z-index: 1;
+  margin: 0;
+  cursor: pointer;
+}
+
+.react-beauty-el-checkbox-input:focus-visible + .react-beauty-el-checkbox-box {
+  outline: 2px solid var(--components-checkbox-colors-focus-ring);
+  outline-offset: 2px;
+}
+
+.react-beauty-el-checkbox-label {
+  font-size: var(--components-checkbox-font-size-label);
+  line-height: var(--components-checkbox-line-height-label);
+  font-weight: var(--components-checkbox-font-weight-label);
+  color: var(--components-checkbox-colors-label);
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.react-beauty-el-checkbox-box[data-disabled='true'] {
+  opacity: 0.55;
+  border-color: var(--components-checkbox-colors-border-disabled);
+}

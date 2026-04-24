@@ -6,6 +6,7 @@ import { incidentCategories as categoryApi } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { Checkbox } from '../ui/Checkbox'
 
 interface CategoryProps {
   categories: IncidentCategoryRead[]
@@ -276,19 +277,19 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
                   }
                 />
               </label>
-              <label
+              <div
                 className="dashboard-dialog-field"
                 style={{ flexDirection: 'row', alignItems: 'center', gap: '10px' }}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={createForm.autoapprove}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, autoapprove: e.target.checked }))
+                  onCheckedChange={(checked) =>
+                    setCreateForm((f) => ({ ...f, autoapprove: checked }))
                   }
+                  ariaLabel="Auto-approve"
                 />
                 <span style={{ margin: 0 }}>Auto-approve</span>
-              </label>
+              </div>
               <label className="dashboard-dialog-field">
                 <span>Parent category</span>
                 <select
@@ -364,19 +365,19 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
                   }
                 />
               </label>
-              <label
+              <div
                 className="dashboard-dialog-field"
                 style={{ flexDirection: 'row', alignItems: 'center', gap: '10px' }}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={editForm.autoapprove}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, autoapprove: e.target.checked }))
+                  onCheckedChange={(checked) =>
+                    setEditForm((f) => ({ ...f, autoapprove: checked }))
                   }
+                  ariaLabel="Auto-approve"
                 />
                 <span style={{ margin: 0 }}>Auto-approve</span>
-              </label>
+              </div>
               <label className="dashboard-dialog-field">
                 <span>Parent category</span>
                 <select

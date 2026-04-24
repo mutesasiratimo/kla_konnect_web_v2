@@ -11,6 +11,7 @@ import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
 import { DashboardDialog } from '../DashboardDialog'
 import { PendingMediaDropzone, uploadKindForFile } from '../FileUploadDropzone'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { Checkbox } from '../ui/Checkbox'
 import { alertError, alertSuccess, confirmAction, closeAlert, showLoading } from '../../utils/alerts'
 
 interface ListProps {
@@ -20,6 +21,8 @@ interface ListProps {
   showCreateButton?: boolean
   createAsCityAlert?: boolean
 }
+
+type CityAlertTab = 'active' | 'upcoming' | 'archived'
 
 function statusLabel(status: IncidentWorkflowStatus): string {
   switch (status) {
@@ -44,6 +47,17 @@ function statusBadgeClass(status: IncidentWorkflowStatus): string {
   return 'status-badge--warning'
 }
 
+function toLocalDateInputValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function toTimeWithSeconds(value: string): string {
+  return /^\d{2}:\d{2}$/.test(value) ? `${value}:00` : value
+}
+
 export const IncidentList: React.FC<ListProps> = ({
   data,
   categoryOptions,
@@ -61,6 +75,13 @@ export const IncidentList: React.FC<ListProps> = ({
   const [newAddressLong, setNewAddressLong] = useState<number | null>(null)
   const [newStartDate, setNewStartDate] = useState('')
   const [newEndDate, setNewEndDate] = useState('')
+  const [newRecurringEnabled, setNewRecurringEnabled] = useState(false)
+  const [newRecurrenceStartDate, setNewRecurrenceStartDate] = useState(() =>
+    toLocalDateInputValue(new Date()),
+  )
+  const [newRecurrenceEndDate, setNewRecurrenceEndDate] = useState('')
+  const [newRecurrenceWindowStart, setNewRecurrenceWindowStart] = useState('17:00')
+  const [newRecurrenceWindowEnd, setNewRecurrenceWindowEnd] = useState('20:00')
   const [newFullClosure, setNewFullClosure] = useState(false)
   const [addressSuggestions, setAddressSuggestions] = useState<
     { placeId: string; description: string }[]
@@ -84,6 +105,38 @@ export const IncidentList: React.FC<ListProps> = ({
   const [viewDraftAssigneeRoleId, setViewDraftAssigneeRoleId] = useState<string>('')
   const [updatingViewMeta, setUpdatingViewMeta] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [cityAlertTab, setCityAlertTab] = useState<CityAlertTab>('active')
+
+  const cityAlertBuckets = useMemo(() => {
+    const now = Date.now()
+    const out: Record<CityAlertTab, IncidentRead[]> = {
+      active: [],
+      upcoming: [],
+      archived: [],
+    }
+
+    for (const item of data) {
+      const archivedByStatus = item.status === '2' || item.status === '3'
+      const startMs = item.startdate ? new Date(item.startdate).getTime() : NaN
+      const endMs = item.enddate ? new Date(item.enddate).getTime() : NaN
+      const hasValidStart = Number.isFinite(startMs)
+      const hasValidEnd = Number.isFinite(endMs)
+
+      if (archivedByStatus || (hasValidEnd && endMs < now)) {
+        out.archived.push(item)
+        continue
+      }
+      if (hasValidStart && startMs > now) {
+        out.upcoming.push(item)
+        continue
+      }
+      out.active.push(item)
+    }
+
+    return out
+  }, [data])
+
+  const visibleRows = createAsCityAlert ? cityAlertBuckets[cityAlertTab] : data
 
   const closeCreate = () => {
     setCreateOpen(false)
@@ -95,22 +148,16 @@ export const IncidentList: React.FC<ListProps> = ({
     setNewAddressLong(null)
     setNewStartDate('')
     setNewEndDate('')
+    setNewRecurringEnabled(false)
+    setNewRecurrenceStartDate(toLocalDateInputValue(new Date()))
+    setNewRecurrenceEndDate('')
+    setNewRecurrenceWindowStart('17:00')
+    setNewRecurrenceWindowEnd('20:00')
     setNewFullClosure(false)
     setAddressSuggestions([])
     setNewCategoryId(categoryOptions[0]?.id ?? '')
     setPendingAttachments([])
   }
-
-  const selectedCategoryName = useMemo(
-    () =>
-      categoryOptions.find((c) => c.id === newCategoryId)?.name?.toLowerCase() ?? '',
-    [categoryOptions, newCategoryId],
-  )
-  const isRoadCategory = createAsCityAlert && selectedCategoryName.includes('road')
-
-  useEffect(() => {
-    if (!isRoadCategory) setNewFullClosure(false)
-  }, [isRoadCategory])
 
   useEffect(() => {
     let cancelled = false
@@ -223,8 +270,45 @@ export const IncidentList: React.FC<ListProps> = ({
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newName.trim() || !newCategoryId) return
+    if (createAsCityAlert && newRecurringEnabled) {
+      if (
+        !newRecurrenceStartDate ||
+        !newRecurrenceEndDate ||
+        !newRecurrenceWindowStart ||
+        !newRecurrenceWindowEnd
+      ) {
+        await alertError(
+          'Missing recurrence fields',
+          'Provide start/end dates and from/to times for the recurring city alert.',
+        )
+        return
+      }
+      if (newRecurrenceEndDate < newRecurrenceStartDate) {
+        await alertError('Invalid recurrence range', 'End date must be after start date.')
+        return
+      }
+      if (newRecurrenceWindowEnd <= newRecurrenceWindowStart) {
+        await alertError(
+          'Invalid time window',
+          'End time must be after start time (for example 17:00 to 20:00).',
+        )
+        return
+      }
+    }
     setSaving(true)
     try {
+      const recurrence =
+        createAsCityAlert && newRecurringEnabled
+          ? {
+              frequency: 'daily' as const,
+              interval: 1,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+              start_date: newRecurrenceStartDate,
+              end_date: newRecurrenceEndDate,
+              window_start: toTimeWithSeconds(newRecurrenceWindowStart),
+              window_end: toTimeWithSeconds(newRecurrenceWindowEnd),
+            }
+          : null
       const created = await incidentsApi.register({
         name: newName.trim(),
         incident_category_id: newCategoryId,
@@ -235,9 +319,20 @@ export const IncidentList: React.FC<ListProps> = ({
         address: newAddress.trim() || null,
         addresslat: newAddressLat,
         addresslong: newAddressLong,
-        startdate: createAsCityAlert && newStartDate ? newStartDate : null,
-        enddate: createAsCityAlert && newEndDate ? newEndDate : null,
-        fulldisruption: isRoadCategory ? newFullClosure : false,
+        startdate:
+          createAsCityAlert && newRecurringEnabled
+            ? `${newRecurrenceStartDate}T${newRecurrenceWindowStart}`
+            : createAsCityAlert && newStartDate
+              ? newStartDate
+              : null,
+        enddate:
+          createAsCityAlert && newRecurringEnabled
+            ? `${newRecurrenceStartDate}T${newRecurrenceWindowEnd}`
+            : createAsCityAlert && newEndDate
+              ? newEndDate
+              : null,
+        fulldisruption: createAsCityAlert ? newFullClosure : false,
+        recurrence,
       })
       for (let i = 0; i < pendingAttachments.length; i++) {
         const file = pendingAttachments[i]
@@ -511,6 +606,37 @@ export const IncidentList: React.FC<ListProps> = ({
           </button>
         </div>
       )}
+      {createAsCityAlert && (
+        <div className="city-alert-tabs" role="tablist" aria-label="City alert status tabs">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={cityAlertTab === 'active'}
+            className={`city-alert-tab ${cityAlertTab === 'active' ? 'city-alert-tab--active' : ''}`}
+            onClick={() => setCityAlertTab('active')}
+          >
+            Active ({cityAlertBuckets.active.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={cityAlertTab === 'upcoming'}
+            className={`city-alert-tab ${cityAlertTab === 'upcoming' ? 'city-alert-tab--active' : ''}`}
+            onClick={() => setCityAlertTab('upcoming')}
+          >
+            Upcoming ({cityAlertBuckets.upcoming.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={cityAlertTab === 'archived'}
+            className={`city-alert-tab ${cityAlertTab === 'archived' ? 'city-alert-tab--active' : ''}`}
+            onClick={() => setCityAlertTab('archived')}
+          >
+            Archived/Expired ({cityAlertBuckets.archived.length})
+          </button>
+        </div>
+      )}
 
       <DashboardDialog
         open={createOpen}
@@ -602,12 +728,83 @@ export const IncidentList: React.FC<ListProps> = ({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: createAsCityAlert ? '1fr 1fr auto auto' : 'auto',
+              gridTemplateColumns: createAsCityAlert
+                ? 'repeat(2, minmax(0, 1fr))'
+                : 'auto',
               gap: '12px',
               alignItems: 'end',
             }}
           >
             {createAsCityAlert && (
+              <div
+                className="dashboard-dialog-field"
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: '10px',
+                  margin: 0,
+                  gridColumn: '1 / -1',
+                }}
+              >
+                <Checkbox
+                  checked={newRecurringEnabled}
+                  onCheckedChange={setNewRecurringEnabled}
+                  ariaLabel="Recurring city alert"
+                />
+                <span style={{ margin: 0 }}>Recurring city alert (daily)</span>
+              </div>
+            )}
+            {createAsCityAlert && newRecurringEnabled && (
+              <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+                <span>Repeat from date</span>
+                <input
+                  type="date"
+                  value={newRecurrenceStartDate}
+                  onChange={(e) => setNewRecurrenceStartDate(e.target.value)}
+                />
+              </label>
+            )}
+            {createAsCityAlert && newRecurringEnabled && (
+              <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+                <span>Repeat until date</span>
+                <input
+                  type="date"
+                  value={newRecurrenceEndDate}
+                  onChange={(e) => setNewRecurrenceEndDate(e.target.value)}
+                />
+              </label>
+            )}
+            {createAsCityAlert && newRecurringEnabled && (
+              <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+                <span>From time</span>
+                <input
+                  type="time"
+                  value={newRecurrenceWindowStart}
+                  onChange={(e) => setNewRecurrenceWindowStart(e.target.value)}
+                />
+              </label>
+            )}
+            {createAsCityAlert && newRecurringEnabled && (
+              <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+                <span>To time</span>
+                <input
+                  type="time"
+                  value={newRecurrenceWindowEnd}
+                  onChange={(e) => setNewRecurrenceWindowEnd(e.target.value)}
+                />
+              </label>
+            )}
+            {createAsCityAlert && newRecurringEnabled && (
+              <small
+                style={{
+                  color: 'var(--dashboard-muted, #64748b)',
+                  gridColumn: '1 / -1',
+                }}
+              >
+                Example: 17:00 to 20:00 every day from today to May 5th.
+              </small>
+            )}
+            {createAsCityAlert && !newRecurringEnabled && (
               <label className="dashboard-dialog-field" style={{ margin: 0 }}>
                 <span>Start date</span>
                 <input
@@ -617,7 +814,7 @@ export const IncidentList: React.FC<ListProps> = ({
                 />
               </label>
             )}
-            {createAsCityAlert && (
+            {createAsCityAlert && !newRecurringEnabled && (
               <label className="dashboard-dialog-field" style={{ margin: 0 }}>
                 <span>End date</span>
                 <input
@@ -627,19 +824,24 @@ export const IncidentList: React.FC<ListProps> = ({
                 />
               </label>
             )}
-            <label
+            <div
               className="dashboard-dialog-field"
-              style={{ flexDirection: 'row', alignItems: 'center', gap: '10px', margin: 0 }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: '10px',
+                margin: 0,
+              }}
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={newEmergency}
-                onChange={(e) => setNewEmergency(e.target.checked)}
+                onCheckedChange={setNewEmergency}
+                ariaLabel="Emergency"
               />
               <span style={{ margin: 0 }}>Emergency</span>
-            </label>
-            {isRoadCategory && (
-              <label
+            </div>
+            {createAsCityAlert && (
+              <div
                 className="dashboard-dialog-field"
                 style={{
                   flexDirection: 'row',
@@ -648,13 +850,13 @@ export const IncidentList: React.FC<ListProps> = ({
                   margin: 0,
                 }}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newFullClosure}
-                  onChange={(e) => setNewFullClosure(e.target.checked)}
+                  onCheckedChange={setNewFullClosure}
+                  ariaLabel="Full closure"
                 />
                 <span style={{ margin: 0 }}>Full closure</span>
-              </label>
+              </div>
             )}
           </div>
           <PendingMediaDropzone
@@ -907,13 +1109,19 @@ export const IncidentList: React.FC<ListProps> = ({
 
       <div className="dashboard-table-shell">
         <DashboardDataGrid<IncidentRead>
-          rows={data}
+          rows={visibleRows}
           columns={columns}
           getRowId={(row) => row.id}
           localeText={{
-            noRowsLabel: showCreateButton
-              ? 'No records yet. Create one to get started.'
-              : 'No incidents found for the selected filters.',
+            noRowsLabel: createAsCityAlert
+              ? cityAlertTab === 'active'
+                ? 'No active city alerts right now.'
+                : cityAlertTab === 'upcoming'
+                  ? 'No upcoming city alerts.'
+                  : 'No archived or expired city alerts yet.'
+              : showCreateButton
+                ? 'No records yet. Create one to get started.'
+                : 'No incidents found for the selected filters.',
           }}
         />
       </div>

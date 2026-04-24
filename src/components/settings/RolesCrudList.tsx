@@ -5,6 +5,7 @@ import { roles as rolesApi } from '../../api/endpoints'
 import { ApiError, getSession } from '../../api/client'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import { Checkbox } from '../ui/Checkbox'
 import {
   alertError,
   alertSuccess,
@@ -508,17 +509,14 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
                 <div className="roles-permission-group" key={prefix}>
                   <div className="roles-permission-group-title">{prefix}</div>
                   {keys.map((key) => (
-                    <label className="roles-permission-checkbox-row" key={key}>
-                      <input
-                        type="checkbox"
-                        checked={isEffectivePermissionChecked(
-                          key,
-                          createSelected,
-                        )}
-                        onChange={() => toggleCreatePerm(key)}
+                    <div className="roles-permission-checkbox-row" key={key}>
+                      <Checkbox
+                        checked={isEffectivePermissionChecked(key, createSelected)}
+                        onCheckedChange={() => toggleCreatePerm(key)}
+                        ariaLabel={key}
                       />
                       <code className="roles-permission-key">{key}</code>
-                    </label>
+                    </div>
                   ))}
                 </div>
               ))}
@@ -641,17 +639,14 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
                   <div className="roles-permission-group" key={prefix}>
                     <div className="roles-permission-group-title">{prefix}</div>
                     {keys.map((key) => (
-                      <label className="roles-permission-checkbox-row" key={key}>
-                        <input
-                          type="checkbox"
-                          checked={isEffectivePermissionChecked(
-                            key,
-                            editSelected,
-                          )}
-                          onChange={() => toggleEditPerm(key)}
+                      <div className="roles-permission-checkbox-row" key={key}>
+                        <Checkbox
+                          checked={isEffectivePermissionChecked(key, editSelected)}
+                          onCheckedChange={() => toggleEditPerm(key)}
+                          ariaLabel={key}
                         />
                         <code className="roles-permission-key">{key}</code>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 ))}
@@ -717,7 +712,7 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
                     {prefix}
                   </div>
                   {keys.map((key) => (
-                    <label
+                    <div
                       key={key}
                       style={{
                         display: 'flex',
@@ -727,13 +722,13 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
                         fontSize: '0.875rem',
                       }}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={isEffectivePermissionChecked(key, permSelected)}
-                        onChange={() => togglePerm(key)}
+                        onCheckedChange={() => togglePerm(key)}
+                        ariaLabel={key}
                       />
                       <span style={{ fontFamily: 'monospace' }}>{key}</span>
-                    </label>
+                    </div>
                   ))}
                 </div>
               ))}

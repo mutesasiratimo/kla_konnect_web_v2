@@ -24,8 +24,9 @@ const getBaseUrl = (): string => {
   // Default to the API origin directly (avoid relying on the dev proxy).
   // For non-local environments, set VITE_API_URL in the build/runtime env.
   // return 'http://109.123.241.160:8041'
-  // return 'http://172.16.0.160'
-  return 'https://klakonnect.kcca.go.ug'
+    // return 'http://172.16.0.160'
+    // return 'https://klakonnect.kcca.go.ug'
+    return 'http://localhost:8041'
 }
 
 /** Base URL to resolve media/attachment URLs against. */
