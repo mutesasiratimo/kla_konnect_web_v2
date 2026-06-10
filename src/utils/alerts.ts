@@ -8,6 +8,10 @@ export async function alertError(title: string, text?: string) {
   return Swal.fire({ icon: 'error', title, text })
 }
 
+export async function alertInfo(title: string, text?: string) {
+  return Swal.fire({ icon: 'info', title, text })
+}
+
 export async function confirmAction(opts: {
   title: string
   text?: string

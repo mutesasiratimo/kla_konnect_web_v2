@@ -5,6 +5,13 @@ import { revenueCategories as api } from '../../api/endpoints'
 import { suggestedCodeFromCategoryName } from '../../utils/codeFromCategoryName'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface RevenueParentCategoriesTabProps {
   categories: RevenueCategoryRead[]
@@ -54,6 +61,7 @@ export const RevenueParentCategoriesTab: React.FC<
     if (!form.code.trim() || !form.name.trim()) return
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await api.create({
         code: form.code.trim(),
         name: form.name.trim(),
@@ -61,9 +69,12 @@ export const RevenueParentCategoriesTab: React.FC<
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Parent category created.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not create parent category.')
+      closeAlert()
+      await alertError('Failed', 'Could not create parent category.')
     } finally {
       setSaving(false)
     }
@@ -74,6 +85,7 @@ export const RevenueParentCategoriesTab: React.FC<
     if (!editTarget || !form.code.trim() || !form.name.trim()) return
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await api.update(editTarget.id, {
         code: form.code.trim(),
         name: form.name.trim(),
@@ -81,22 +93,33 @@ export const RevenueParentCategoriesTab: React.FC<
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Parent category updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update parent category.')
+      closeAlert()
+      await alertError('Failed', 'Could not update parent category.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this parent category?')) return
+    const ok = await confirmAction({
+      title: 'Delete this parent category?',
+      confirmButtonText: 'Delete',
+    })
+    if (!ok) return
     try {
+      showLoading('Deleting category', 'Please wait…')
       await api.delete(id, false)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Deleted', 'The parent category was removed.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete parent category.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete parent category.')
     }
   }
 

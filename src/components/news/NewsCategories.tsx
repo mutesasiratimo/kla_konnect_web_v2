@@ -4,6 +4,14 @@ import type { NewsCategoryRead } from '../../api/types'
 import { newsCategories as api } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import {
+  alertError,
+  alertInfo,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface NewsCategoriesProps {
   categories: NewsCategoryRead[]
@@ -53,15 +61,19 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
     if (!form.name.trim()) return
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await api.create({
         name: form.name.trim(),
         description: form.description.trim() || null,
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'News category created.')
     } catch (error) {
       console.error(error)
-      window.alert('Could not create news category.')
+      closeAlert()
+      await alertError('Failed', 'Could not create news category.')
     } finally {
       setSaving(false)
     }
@@ -72,28 +84,40 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
     if (!editTarget || !form.name.trim()) return
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await api.update(editTarget.id, {
         name: form.name.trim(),
         description: form.description.trim() || null,
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'News category updated.')
     } catch (error) {
       console.error(error)
-      window.alert('Could not update news category.')
+      closeAlert()
+      await alertError('Failed', 'Could not update news category.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Archive this news category?')) return
+    const ok = await confirmAction({
+      title: 'Archive this news category?',
+      confirmButtonText: 'Archive',
+    })
+    if (!ok) return
     try {
+      showLoading('Archiving category', 'Please wait…')
       await api.delete(id)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Archived', 'The news category was archived.')
     } catch (error) {
       console.error(error)
-      window.alert('Could not archive news category.')
+      closeAlert()
+      await alertError('Failed', 'Could not archive news category.')
     }
   }
 
@@ -122,8 +146,9 @@ export const NewsCategories: React.FC<NewsCategoriesProps> = ({
             title="View"
             aria-label="View category"
             onClick={() =>
-              window.alert(
-                `${params.row.name}\n\n${params.row.description || 'No description'}`,
+              void alertInfo(
+                params.row.name,
+                params.row.description || 'No description',
               )
             }
           >

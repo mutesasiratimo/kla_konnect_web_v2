@@ -11,6 +11,13 @@ import type {
 import { revenueStreams as api, users as usersApi } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface RevenueStreamsCrudListProps {
   streams: RevenueStreamRead[]
@@ -338,32 +345,40 @@ export const RevenueStreamsCrudList: React.FC<RevenueStreamsCrudListProps> = ({
     if (!editTarget || !form.name.trim() || !form.category_id) return
     setSaving(true)
     try {
+      showLoading('Saving stream', 'Please wait…')
       await api.update(editTarget.id, toCreateBody(form))
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Revenue stream updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update revenue stream.')
+      closeAlert()
+      await alertError('Failed', 'Could not update revenue stream.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (row: RevenueStreamRead) => {
-    if (
-      !window.confirm(
-        `Delete revenue stream "${row.name}"? This cannot be undone if hard delete is enabled on the server.`,
-      )
-    )
-      return
+    const ok = await confirmAction({
+      title: `Delete revenue stream "${row.name}"?`,
+      text: 'This cannot be undone if hard delete is enabled on the server.',
+      confirmButtonText: 'Delete',
+    })
+    if (!ok) return
     setSaving(true)
     try {
+      showLoading('Deleting stream', 'Please wait…')
       await api.delete(row.id)
       if (viewTarget?.id === row.id) closeViewOnly()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Deleted', 'The revenue stream was removed.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete revenue stream.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete revenue stream.')
     } finally {
       setSaving(false)
     }

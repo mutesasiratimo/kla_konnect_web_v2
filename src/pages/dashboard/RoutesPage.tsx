@@ -5,6 +5,13 @@ import type { RevenueSubcategoryRead, RouteChartCreate, RouteChartRead } from '.
 import { DashboardDataGrid } from '../../components/table/DashboardDataGrid'
 import { DashboardDialog } from '../../components/DashboardDialog'
 import { GOOGLE_MAPS_API_KEY } from '../../config/maps'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface RoutesPageProps {
   routeChartsData: RouteChartRead[]
@@ -302,17 +309,24 @@ export function RoutesPage({
     e.preventDefault()
     const payload = toPayload()
     if (!payload) {
-      window.alert('Pick start and end addresses from suggestions so coordinates are captured.')
+      void alertError(
+        'Addresses',
+        'Pick start and end addresses from suggestions so coordinates are captured.',
+      )
       return
     }
     setSaving(true)
     try {
+      showLoading('Saving route chart', 'Please wait…')
       await routeCharts.create(payload)
       closeDialogs()
       await onRefreshRouteCharts()
+      closeAlert()
+      await alertSuccess('Saved', 'Route chart created.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not create route chart.')
+      closeAlert()
+      await alertError('Failed', 'Could not create route chart.')
     } finally {
       setSaving(false)
     }
@@ -323,30 +337,45 @@ export function RoutesPage({
     if (!editTarget) return
     const payload = toPayload()
     if (!payload) {
-      window.alert('Pick start and end addresses from suggestions so coordinates are captured.')
+      void alertError(
+        'Addresses',
+        'Pick start and end addresses from suggestions so coordinates are captured.',
+      )
       return
     }
     setSaving(true)
     try {
+      showLoading('Saving route chart', 'Please wait…')
       await routeCharts.update(editTarget.id, payload)
       closeDialogs()
       await onRefreshRouteCharts()
+      closeAlert()
+      await alertSuccess('Saved', 'Route chart updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update route chart.')
+      closeAlert()
+      await alertError('Failed', 'Could not update route chart.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this route chart?')) return
+    const ok = await confirmAction({
+      title: 'Delete this route chart?',
+      confirmButtonText: 'Delete',
+    })
+    if (!ok) return
     try {
+      showLoading('Deleting route chart', 'Please wait…')
       await routeCharts.delete(id)
       await onRefreshRouteCharts()
+      closeAlert()
+      await alertSuccess('Deleted', 'The route chart was removed.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete route chart.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete route chart.')
     }
   }
 

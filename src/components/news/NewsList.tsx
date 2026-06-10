@@ -10,7 +10,13 @@ import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
 import { getSession, resolveApiMediaUrl } from '../../api/client'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
-import { alertError, confirmAction } from '../../utils/alerts'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface NewsListProps {
   articles: NewsArticleRead[]
@@ -99,11 +105,15 @@ export const NewsList: React.FC<NewsListProps> = ({
     if (!form.category_id || !form.title.trim() || !form.body.trim()) return
     setSaving(true)
     try {
+      showLoading('Saving article', 'Please wait…')
       await api.create(buildPayload())
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'News article created.')
     } catch (error) {
       console.error(error)
+      closeAlert()
       await alertError('Failed', 'Could not create news article.')
     } finally {
       setSaving(false)
@@ -116,6 +126,7 @@ export const NewsList: React.FC<NewsListProps> = ({
       return
     setSaving(true)
     try {
+      showLoading('Saving article', 'Please wait…')
       await api.update(editTarget.id, {
         category_id: form.category_id,
         title: form.title.trim(),
@@ -126,8 +137,11 @@ export const NewsList: React.FC<NewsListProps> = ({
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'News article updated.')
     } catch (error) {
       console.error(error)
+      closeAlert()
       await alertError('Failed', 'Could not update news article.')
     } finally {
       setSaving(false)
@@ -138,10 +152,14 @@ export const NewsList: React.FC<NewsListProps> = ({
     const ok = await confirmAction({ title: 'Archive this article?', confirmButtonText: 'Archive' })
     if (!ok) return
     try {
+      showLoading('Archiving article', 'Please wait…')
       await api.delete(id, false)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Archived', 'The article was archived.')
     } catch (error) {
       console.error(error)
+      closeAlert()
       await alertError('Failed', 'Could not archive news article.')
     }
   }

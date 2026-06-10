@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import loginHero from './assets/login-hero.jpeg'
+import klakonnectLogoClean from './assets/klakonnect_logo_clean.png'
 // Self-registration flow (RegisterApp) is disabled — only login is exposed in the UI.
 // import { RegisterApp } from './RegisterApp'
 import Dashboard from './Dashboard'
@@ -12,9 +13,10 @@ import {
   clearToken,
   ApiError,
 } from './api'
-import type { LoginUser } from './api/types'
+import type { LoginResponse, LoginUser } from './api/types'
 import { OtpInput6, OTP_INPUT_LEN } from './components/OtpInput6'
 import { Checkbox } from './components/ui/Checkbox'
+import { alertError } from './utils/alerts'
 
 type AuthMode = 'login' | 'forgot' | 'reset'
 
@@ -47,6 +49,11 @@ type LoginFormState = {
 
 const INACTIVITY_CHECK_MS = 30 * 1000 // check every 30s
 
+function isCitizenRole(role: LoginResponse['role'] | null | undefined): boolean {
+  if (!role) return false
+  return role.id === 'citizen' || role.name?.trim().toLowerCase() === 'citizen'
+}
+
 function displayName(user: LoginUser | null | undefined): string {
   if (!user) return 'User'
   if (user.full_name?.trim()) return user.full_name.trim()
@@ -66,7 +73,7 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     const s = getSession()
     if (!s?.access_token || !s.user) return false
-    if (isSessionExpired()) {
+    if (isSessionExpired() || isCitizenRole(s.role)) {
       clearToken()
       return false
     }
@@ -247,6 +254,15 @@ function App() {
         username: form.username.trim(),
         password: form.password,
       })
+      if (isCitizenRole(res.role)) {
+        auth.logout()
+        setForm((f) => ({ ...f, password: '' }))
+        await alertError(
+          'Not authorized',
+          'Citizen accounts are not authorized to use the Kla Konnect dashboard. Please use the mobile app instead.',
+        )
+        return
+      }
       setSessionUser(res.user)
       setIsLoggedIn(true)
       window.history.pushState({}, '', '/dashboard')
@@ -279,7 +295,7 @@ function App() {
             <div className="auth-content">
               <div className="auth-brand-row">
                 <img
-                  src="/kcclogo.jpg"
+                  src={klakonnectLogoClean}
                   alt="Kla Konnect"
                   className="logo-image"
                 />

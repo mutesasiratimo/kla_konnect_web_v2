@@ -608,33 +608,25 @@ export const IncidentList: React.FC<ListProps> = ({
       )}
       {createAsCityAlert && (
         <div className="city-alert-tabs" role="tablist" aria-label="City alert status tabs">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={cityAlertTab === 'active'}
-            className={`city-alert-tab ${cityAlertTab === 'active' ? 'city-alert-tab--active' : ''}`}
-            onClick={() => setCityAlertTab('active')}
-          >
-            Active ({cityAlertBuckets.active.length})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={cityAlertTab === 'upcoming'}
-            className={`city-alert-tab ${cityAlertTab === 'upcoming' ? 'city-alert-tab--active' : ''}`}
-            onClick={() => setCityAlertTab('upcoming')}
-          >
-            Upcoming ({cityAlertBuckets.upcoming.length})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={cityAlertTab === 'archived'}
-            className={`city-alert-tab ${cityAlertTab === 'archived' ? 'city-alert-tab--active' : ''}`}
-            onClick={() => setCityAlertTab('archived')}
-          >
-            Archived/Expired ({cityAlertBuckets.archived.length})
-          </button>
+          {(
+            [
+              { key: 'active', label: 'Active' },
+              { key: 'upcoming', label: 'Upcoming' },
+              { key: 'archived', label: 'Archived/Expired' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={cityAlertTab === tab.key}
+              className={`city-alert-tab ${cityAlertTab === tab.key ? 'city-alert-tab--active' : ''}`}
+              onClick={() => setCityAlertTab(tab.key)}
+            >
+              {tab.label}
+              <span className="city-alert-tab-count">{cityAlertBuckets[tab.key].length}</span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -1037,7 +1029,7 @@ export const IncidentList: React.FC<ListProps> = ({
                       <span className="incident-details-stat-count">
                         {viewData.views_count ?? 0}
                       </span>
-                    </span>
+                </span>
                   </div>
                 </div>
               </div>

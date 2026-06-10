@@ -7,6 +7,13 @@ import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
 import { Checkbox } from '../ui/Checkbox'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface CategoryProps {
   categories: IncidentCategoryRead[]
@@ -18,6 +25,8 @@ type FormState = {
   description: string
   image: string
   autoapprove: boolean
+  doesexpire: boolean
+  hourstoexpire: string
   parent_category_id: string
 }
 
@@ -26,6 +35,8 @@ const emptyForm = (): FormState => ({
   description: '',
   image: '',
   autoapprove: false,
+  doesexpire: false,
+  hourstoexpire: '',
   parent_category_id: '',
 })
 
@@ -35,8 +46,95 @@ function formFromCategory(cat: IncidentCategoryRead): FormState {
     description: cat.description ?? '',
     image: cat.image ?? '',
     autoapprove: !!cat.autoapprove,
+    doesexpire: !!cat.doesexpire,
+    hourstoexpire:
+      cat.hourstoexpire != null && Number.isFinite(cat.hourstoexpire)
+        ? String(cat.hourstoexpire)
+        : '',
     parent_category_id: cat.parent_category_id ?? '',
   }
+}
+
+/** `null` when expiry off; `undefined` when expiry on but hours invalid; else positive integer hours. */
+function expiryHoursForApi(form: FormState): number | null | undefined {
+  if (!form.doesexpire) return null
+  const h = Math.floor(Number(form.hourstoexpire))
+  if (!Number.isFinite(h) || h < 1) return undefined
+  return h
+}
+
+function CategoryOptionTiles({
+  form,
+  setForm,
+  disabled,
+}: {
+  form: FormState
+  setForm: React.Dispatch<React.SetStateAction<FormState>>
+  disabled?: boolean
+}) {
+  return (
+    <>
+      <div className="dashboard-dialog-field dashboard-dialog-field--option-tiles">
+        <div className="dashboard-dialog-option-tiles">
+          <div
+            className={
+              'dashboard-dialog-option-tile' +
+              (form.autoapprove ? ' dashboard-dialog-option-tile--selected' : '')
+            }
+          >
+            <Checkbox
+              label="Auto-approve"
+              checked={form.autoapprove}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({ ...f, autoapprove: checked }))
+              }
+              disabled={disabled}
+            />
+          </div>
+          <div
+            className={
+              'dashboard-dialog-option-tile' +
+              (form.doesexpire ? ' dashboard-dialog-option-tile--selected' : '')
+            }
+          >
+            <Checkbox
+              label="Expires"
+              checked={form.doesexpire}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({
+                  ...f,
+                  doesexpire: checked,
+                  hourstoexpire: checked
+                    ? f.hourstoexpire.trim() || '24'
+                    : '',
+                }))
+              }
+              disabled={disabled}
+            />
+          </div>
+        </div>
+      </div>
+      {form.doesexpire ? (
+        <label className="dashboard-dialog-field">
+          <span>Expires in (hours)</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={form.hourstoexpire}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                hourstoexpire: e.target.value,
+              }))
+            }
+            disabled={disabled}
+            required
+          />
+        </label>
+      ) : null}
+    </>
+  )
 }
 
 export const IncidentCategories: React.FC<CategoryProps> = ({
@@ -65,20 +163,34 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!createForm.name.trim()) return
+    const hours = expiryHoursForApi(createForm)
+    if (hours === undefined) {
+      await alertError(
+        'Expiry',
+        'When “Expires” is on, enter a whole number of hours (at least 1).',
+      )
+      return
+    }
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await categoryApi.create({
         name: createForm.name.trim(),
         description: createForm.description.trim() || null,
         image: createForm.image.trim() || null,
         autoapprove: createForm.autoapprove,
+        doesexpire: createForm.doesexpire,
+        hourstoexpire: hours,
         parent_category_id: createForm.parent_category_id || null,
       })
       closeCreate()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Incident category created.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not create category.')
+      closeAlert()
+      await alertError('Failed', 'Could not create category.')
     } finally {
       setSaving(false)
     }
@@ -97,33 +209,55 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editTarget || !editForm.name.trim()) return
+    const hours = expiryHoursForApi(editForm)
+    if (hours === undefined) {
+      await alertError(
+        'Expiry',
+        'When “Expires” is on, enter a whole number of hours (at least 1).',
+      )
+      return
+    }
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await categoryApi.update(editTarget.id, {
         name: editForm.name.trim(),
         description: editForm.description.trim() || null,
         image: editForm.image.trim() || null,
         autoapprove: editForm.autoapprove,
+        doesexpire: editForm.doesexpire,
+        hourstoexpire: hours,
         parent_category_id: editForm.parent_category_id || null,
       })
       closeEdit()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Incident category updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update category.')
+      closeAlert()
+      await alertError('Failed', 'Could not update category.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this category?')) return
+    const ok = await confirmAction({
+      title: 'Delete this category?',
+      confirmButtonText: 'Delete',
+    })
+    if (!ok) return
     try {
+      showLoading('Deleting category', 'Please wait…')
       await categoryApi.delete(id)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Deleted', 'The category was removed.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete category.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete category.')
     }
   }
 
@@ -175,6 +309,23 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
       headerName: 'Auto-approve',
       width: 120,
       valueGetter: (_v, r) => (r.autoapprove ? 'Yes' : 'No'),
+    },
+    {
+      field: 'doesexpire',
+      headerName: 'Expires',
+      width: 90,
+      valueGetter: (_v, r) => (r.doesexpire ? 'Yes' : 'No'),
+    },
+    {
+      field: 'hourstoexpire',
+      headerName: 'Expires in (hrs)',
+      width: 130,
+      align: 'right',
+      headerAlign: 'right',
+      valueGetter: (_v, r) =>
+        r.doesexpire && r.hourstoexpire != null ? r.hourstoexpire : null,
+      valueFormatter: (value) =>
+        value != null && value !== '' ? String(value) : '—',
     },
     {
       field: 'actions',
@@ -277,19 +428,11 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
                   }
                 />
               </label>
-              <div
-                className="dashboard-dialog-field"
-                style={{ flexDirection: 'row', alignItems: 'center', gap: '10px' }}
-              >
-                <Checkbox
-                  checked={createForm.autoapprove}
-                  onCheckedChange={(checked) =>
-                    setCreateForm((f) => ({ ...f, autoapprove: checked }))
-                  }
-                  ariaLabel="Auto-approve"
-                />
-                <span style={{ margin: 0 }}>Auto-approve</span>
-              </div>
+              <CategoryOptionTiles
+                form={createForm}
+                setForm={setCreateForm}
+                disabled={saving}
+              />
               <label className="dashboard-dialog-field">
                 <span>Parent category</span>
                 <select
@@ -365,19 +508,11 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
                   }
                 />
               </label>
-              <div
-                className="dashboard-dialog-field"
-                style={{ flexDirection: 'row', alignItems: 'center', gap: '10px' }}
-              >
-                <Checkbox
-                  checked={editForm.autoapprove}
-                  onCheckedChange={(checked) =>
-                    setEditForm((f) => ({ ...f, autoapprove: checked }))
-                  }
-                  ariaLabel="Auto-approve"
-                />
-                <span style={{ margin: 0 }}>Auto-approve</span>
-              </div>
+              <CategoryOptionTiles
+                form={editForm}
+                setForm={setEditForm}
+                disabled={saving}
+              />
               <label className="dashboard-dialog-field">
                 <span>Parent category</span>
                 <select
@@ -451,6 +586,17 @@ export const IncidentCategories: React.FC<CategoryProps> = ({
                   <strong>Auto-approve:</strong>{' '}
                   {viewTarget.autoapprove ? 'Yes' : 'No'}
                 </p>
+                <p>
+                  <strong>Expires:</strong> {viewTarget.doesexpire ? 'Yes' : 'No'}
+                </p>
+                {viewTarget.doesexpire ? (
+                  <p>
+                    <strong>Expires in (hrs):</strong>{' '}
+                    {viewTarget.hourstoexpire != null
+                      ? viewTarget.hourstoexpire
+                      : '—'}
+                  </p>
+                ) : null}
                 <p>
                   <strong>Parent:</strong>{' '}
                   {viewTarget.parent_category_id

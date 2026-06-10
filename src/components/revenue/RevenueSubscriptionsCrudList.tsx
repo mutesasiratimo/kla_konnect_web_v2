@@ -9,6 +9,13 @@ import type {
 import { revenueSubscriptions } from '../../api/endpoints'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 type Props = {
   subscriptions: RevenueSubscriptionRead[]
@@ -134,12 +141,16 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
     if (!payload) return
     setSaving(true)
     try {
+      showLoading('Saving package', 'Please wait…')
       await revenueSubscriptions.create(payload)
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Subscription package created.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not create subscription package.')
+      closeAlert()
+      await alertError('Failed', 'Could not create subscription package.')
     } finally {
       setSaving(false)
     }
@@ -152,25 +163,37 @@ export const RevenueSubscriptionsCrudList: React.FC<Props> = ({
     if (!payload) return
     setSaving(true)
     try {
+      showLoading('Saving package', 'Please wait…')
       await revenueSubscriptions.update(editTarget.id, payload)
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Subscription package updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update subscription package.')
+      closeAlert()
+      await alertError('Failed', 'Could not update subscription package.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this subscription package?')) return
+    const ok = await confirmAction({
+      title: 'Delete this subscription package?',
+      confirmButtonText: 'Delete',
+    })
+    if (!ok) return
     try {
+      showLoading('Deleting package', 'Please wait…')
       await revenueSubscriptions.delete(id)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Deleted', 'The subscription package was removed.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete subscription package.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete subscription package.')
     }
   }
 

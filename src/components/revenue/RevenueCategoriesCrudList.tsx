@@ -10,6 +10,13 @@ import { DashboardDialog } from '../DashboardDialog'
 import { ImageUploadDropzone } from '../FileUploadDropzone'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
 import { Checkbox } from '../ui/Checkbox'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface RevenueCategoriesCrudListProps {
   parentCategories: RevenueCategoryRead[]
@@ -101,6 +108,7 @@ export const RevenueCategoriesCrudList: React.FC<
       return
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await api.create({
         category_id: form.parent_category_id,
         code: form.code.trim(),
@@ -111,9 +119,12 @@ export const RevenueCategoriesCrudList: React.FC<
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Category created.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not create category.')
+      closeAlert()
+      await alertError('Failed', 'Could not create category.')
     } finally {
       setSaving(false)
     }
@@ -124,6 +135,7 @@ export const RevenueCategoriesCrudList: React.FC<
     if (!editTarget || !form.code.trim() || !form.name.trim()) return
     setSaving(true)
     try {
+      showLoading('Saving category', 'Please wait…')
       await api.update(editTarget.id, {
         code: form.code.trim(),
         name: form.name.trim(),
@@ -133,22 +145,33 @@ export const RevenueCategoriesCrudList: React.FC<
       })
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'Category updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update category.')
+      closeAlert()
+      await alertError('Failed', 'Could not update category.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this category?')) return
+    const ok = await confirmAction({
+      title: 'Delete this category?',
+      confirmButtonText: 'Delete',
+    })
+    if (!ok) return
     try {
+      showLoading('Deleting category', 'Please wait…')
       await api.delete(id, false)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Deleted', 'The category was removed.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete category.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete category.')
     }
   }
 

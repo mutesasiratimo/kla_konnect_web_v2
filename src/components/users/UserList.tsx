@@ -6,6 +6,13 @@ import { getSession } from '../../api/client'
 import { DashboardDialog } from '../DashboardDialog'
 import { DashboardDataGrid } from '../table/DashboardDataGrid'
 import { Checkbox } from '../ui/Checkbox'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  confirmAction,
+  showLoading,
+} from '../../utils/alerts'
 
 interface UserListProps {
   users: UserRead[]
@@ -73,6 +80,8 @@ export const UserList: React.FC<UserListProps> = ({
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [viewTarget, setViewTarget] = useState<UserRead | null>(null)
   const [filterText, setFilterText] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'verified' | 'unverified'>('all')
+  const [roleFilter, setRoleFilter] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const roleNameById = useMemo(
     () => Object.fromEntries(roles.map((r) => [r.id, r.name])),
@@ -84,9 +93,25 @@ export const UserList: React.FC<UserListProps> = ({
   }, [])
 
   const filteredUsers = useMemo(() => {
+    let list = users
+
+    if (statusFilter === 'active') {
+      list = list.filter((u) => u.is_active)
+    } else if (statusFilter === 'inactive') {
+      list = list.filter((u) => !u.is_active)
+    } else if (statusFilter === 'verified') {
+      list = list.filter((u) => u.is_verified)
+    } else if (statusFilter === 'unverified') {
+      list = list.filter((u) => !u.is_verified)
+    }
+
+    if (roleFilter) {
+      list = list.filter((u) => (u.role_id ?? '') === roleFilter)
+    }
+
     const q = filterText.trim().toLowerCase()
-    if (!q) return users
-    return users.filter((u) => {
+    if (!q) return list
+    return list.filter((u) => {
       const blob = [
         displayName(u),
         u.email,
@@ -97,7 +122,7 @@ export const UserList: React.FC<UserListProps> = ({
         .toLowerCase()
       return blob.includes(q)
     })
-  }, [users, filterText])
+  }, [users, filterText, statusFilter, roleFilter])
 
   const closeDialogs = () => {
     setCreateOpen(false)
@@ -136,12 +161,16 @@ export const UserList: React.FC<UserListProps> = ({
     }
     setSaving(true)
     try {
+      showLoading('Creating user', 'Please wait…')
       await usersApi.register(payload)
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('User created', 'The new account was added.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not create user.')
+      closeAlert()
+      await alertError('Failed', 'Could not create user.')
     } finally {
       setSaving(false)
     }
@@ -163,25 +192,37 @@ export const UserList: React.FC<UserListProps> = ({
     }
     setSaving(true)
     try {
+      showLoading('Saving user', 'Please wait…')
       await usersApi.update(editTarget.id, body)
       closeDialogs()
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Saved', 'User updated.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update user.')
+      closeAlert()
+      await alertError('Failed', 'Could not update user.')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Remove this user account?')) return
+    const ok = await confirmAction({
+      title: 'Remove this user account?',
+      confirmButtonText: 'Remove',
+    })
+    if (!ok) return
     try {
+      showLoading('Removing user', 'Please wait…')
       await usersApi.delete(id)
       await onRefresh()
+      closeAlert()
+      await alertSuccess('Removed', 'The user account was deleted.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not delete user.')
+      closeAlert()
+      await alertError('Failed', 'Could not delete user.')
     }
   }
 
@@ -198,12 +239,6 @@ export const UserList: React.FC<UserListProps> = ({
       flex: 1,
       minWidth: 140,
       valueGetter: (_v, row) => displayName(row),
-    },
-    {
-      field: 'id_number',
-      headerName: 'ID number',
-      width: 120,
-      valueGetter: (_v, row) => row.id_number ?? '—',
     },
     { field: 'email', headerName: 'Email', flex: 1, minWidth: 180 },
     {
@@ -274,22 +309,66 @@ export const UserList: React.FC<UserListProps> = ({
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
-      <div
-        className="dashboard-page-header-row"
-        style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}
-      >
-        <label className="dashboard-dialog-field" style={{ margin: 0, flex: '1 1 220px' }}>
-          <span>Filter</span>
-          <input
-            type="search"
-            placeholder="Name, email, phone, ID…"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-          />
-        </label>
-        <button type="button" className="primary-button" onClick={openCreate}>
-          + New user
-        </button>
+      <div className="row g-3 align-items-end mb-3">
+        <div className="col-12 col-md-3">
+          <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+            <span>Search</span>
+            <input
+              type="search"
+              placeholder="Name, email, phone, ID…"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+        </div>
+        <div className="col-12 col-md-3">
+          <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+            <span>Status</span>
+            <select
+              className="dashboard-filter-select"
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as
+                    | 'all'
+                    | 'active'
+                    | 'inactive'
+                    | 'verified'
+                    | 'unverified',
+                )
+              }
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="verified">Verified</option>
+              <option value="unverified">Unverified</option>
+            </select>
+          </label>
+        </div>
+        <div className="col-12 col-md-3">
+          <label className="dashboard-dialog-field" style={{ margin: 0 }}>
+            <span>Role</span>
+            <select
+              className="dashboard-filter-select"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="">All roles</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="col-12 col-md-3 d-flex justify-content-end">
+          <button type="button" className="primary-button" onClick={openCreate}>
+            + New user
+          </button>
+        </div>
       </div>
 
       <DashboardDialog

@@ -11,6 +11,12 @@ import { RevenueParentCategoriesTab } from '../revenue/RevenueParentCategoriesTa
 import { RevenueSubscriptionsCrudList } from '../revenue/RevenueSubscriptionsCrudList'
 import { RolesCrudList } from './RolesCrudList'
 import { OtpInput6, OTP_INPUT_LEN } from '../OtpInput6'
+import {
+  alertError,
+  alertSuccess,
+  closeAlert,
+  showLoading,
+} from '../../utils/alerts'
 
 export type SettingsTabId =
   | 'profile'
@@ -80,11 +86,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const s = getSession()
     const userId = s?.user?.id
     if (!userId) {
-      window.alert('No active user session found.')
+      void alertError('Session', 'No active user session found.')
       return
     }
     setSavingProfile(true)
     try {
+      showLoading('Saving profile', 'Please wait…')
       const updated = await users.update(userId, {
         full_name: accountName.trim() || null,
         phone: phoneNumber.trim() || null,
@@ -98,10 +105,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           user: updated,
         })
       }
-      window.alert('Profile updated successfully.')
+      closeAlert()
+      await alertSuccess('Profile updated', 'Your changes were saved.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update profile.')
+      closeAlert()
+      await alertError('Failed', 'Could not update profile.')
     } finally {
       setSavingProfile(false)
     }
@@ -109,16 +118,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   const handleSendResetCode = async () => {
     if (!emailAddress) {
-      window.alert('No email address available.')
+      void alertError('Email', 'No email address available.')
       return
     }
     setSendingResetCode(true)
     try {
+      showLoading('Sending code', 'Please wait…')
       await auth.forgotPassword({ email: emailAddress })
-      window.alert('Password reset code sent to your email.')
+      closeAlert()
+      await alertSuccess('Code sent', 'Check your email for the reset code.')
     } catch (err) {
       console.error(err)
-      window.alert('Could not send reset code.')
+      closeAlert()
+      await alertError('Failed', 'Could not send reset code.')
     } finally {
       setSendingResetCode(false)
     }
@@ -127,29 +139,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handlePasswordSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newPassword || newPassword !== confirmPassword) {
-      window.alert('Passwords do not match.')
+      void alertError('Passwords', 'Passwords do not match.')
       return
     }
     const codeDigits = resetCode.replace(/\D/g, '')
     if (codeDigits.length !== OTP_INPUT_LEN) {
-      window.alert(`Enter the full ${OTP_INPUT_LEN}-digit code from your email.`)
+      void alertError(
+        'Reset code',
+        `Enter the full ${OTP_INPUT_LEN}-digit code from your email.`,
+      )
       return
     }
     setSavingPassword(true)
     try {
+      showLoading('Updating password', 'Please wait…')
       await auth.resetPassword({
         email: emailAddress,
         code: codeDigits,
         new_password: newPassword,
       })
-      window.alert('Password updated successfully.')
+      closeAlert()
+      await alertSuccess('Password updated', 'You can sign in with your new password.')
       setCurrentPassword('')
       setResetCode('')
       setNewPassword('')
       setConfirmPassword('')
     } catch (err) {
       console.error(err)
-      window.alert('Could not update password.')
+      closeAlert()
+      await alertError('Failed', 'Could not update password.')
     } finally {
       setSavingPassword(false)
     }

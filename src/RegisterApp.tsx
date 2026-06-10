@@ -3,6 +3,7 @@ import PhoneInput from 'react-phone-number-input'
 import Select from 'react-select'
 import 'react-phone-number-input/style.css'
 import './Register.css'
+import klakonnectLogoClean from './assets/klakonnect_logo_clean.png'
 import { users as usersApi, revenueStreams, revenueCategories, revenueSubcategories, locations as locationsApi, stages as stagesApi } from './api'
 import type { UserRead, RevenueCategoryRead, RevenueSubcategoryRead, LocationRead, StageRead } from './api/types'
 
@@ -838,10 +839,10 @@ export function RegisterApp() {
       <div className="register-shell">
         <div className="register-card">
           <header className="register-header">
-            {/* <div className="register-logo">
-              <img src="/kcclogo.jpg" alt="Kla Konnect" />
+            <div className="register-logo">
+              <img src={klakonnectLogoClean} alt="Kla Konnect" />
             </div>
-            <div className="register-heading">
+            {/* <div className="register-heading">
               <h1>Self Registration</h1>
             </div> */}
           </header>
