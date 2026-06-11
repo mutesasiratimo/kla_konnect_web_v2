@@ -45,7 +45,6 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<RoleRead | null>(null)
-  const [permTarget, setPermTarget] = useState<RoleRead | null>(null)
   const [viewTarget, setViewTarget] = useState<RoleRead | null>(null)
 
   const [createName, setCreateName] = useState('')
@@ -57,10 +56,6 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editSelected, setEditSelected] = useState<Record<string, boolean>>({})
-
-  const [permSelected, setPermSelected] = useState<Record<string, boolean>>({})
-  const [permRoleDetail, setPermRoleDetail] =
-    useState<RoleWithPermissionsRead | null>(null)
 
   const [saving, setSaving] = useState(false)
 
@@ -146,57 +141,11 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
     setViewTarget(row)
   }
 
-  const openPermissions = async (row: RoleRead) => {
-    showLoading('Loading role', 'Fetching permissions…')
-    try {
-      let detail: RoleWithPermissionsRead
-      try {
-        detail = await rolesApi.get(row.id)
-      } catch {
-        detail = {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          is_system: row.is_system,
-          permissions: coercePermissionStringList(row.permissions),
-        }
-      }
-      const list = catalog.length ? catalog : await loadCatalog()
-      const rolePerms = coercePermissionStringList(detail.permissions)
-      const catalogKeys = mergeCatalogKeys([...list, ...rolePerms])
-      const sel = selectionFromRolePermissions(rolePerms, catalogKeys)
-      setPermRoleDetail(detail)
-      setPermSelected(sel)
-      setPermTarget(row)
-    } catch (e) {
-      console.error(e)
-      const msg =
-        e instanceof ApiError
-          ? `Could not load permissions (HTTP ${e.status}). The role detail or permission catalog request was rejected.`
-          : 'Could not load role permissions.'
-      void alertError('Role', msg)
-    } finally {
-      closeAlert()
-    }
-  }
-
-  const closePerm = () => {
-    setPermTarget(null)
-    setPermRoleDetail(null)
-    setPermSelected({})
-  }
-
   const catalogKeysForCreate = mergeCatalogKeys(Object.keys(createSelected))
   const catalogKeysForEdit = mergeCatalogKeys(Object.keys(editSelected))
 
   const toggleCreatePerm = (key: string) => {
     setCreateSelected((prev) =>
-      togglePermissionSelection(key, mergeCatalogKeys(Object.keys(prev)), prev),
-    )
-  }
-
-  const togglePerm = (key: string) => {
-    setPermSelected((prev) =>
       togglePermissionSelection(key, mergeCatalogKeys(Object.keys(prev)), prev),
     )
   }
@@ -263,28 +212,6 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
     }
   }
 
-  const handleSavePermissions = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!permTarget) return
-    setSaving(true)
-    try {
-      const catalogKeys = mergeCatalogKeys(Object.keys(permSelected))
-      const permissions = permissionsPayloadFromSelection(
-        permSelected,
-        catalogKeys,
-      )
-      await rolesApi.setPermissions(permTarget.id, { permissions })
-      closePerm()
-      await onRefresh()
-      void alertSuccess('Permissions saved')
-    } catch (err) {
-      console.error(err)
-      void alertError('Permissions', 'Could not save permissions.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleDelete = async (row: RoleRead) => {
     if (row.is_system) return
     const ok = await confirmAction({
@@ -308,9 +235,6 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
 
   const createGroups = groupPermissionKeys(
     mergeCatalogKeys(Object.keys(createSelected)),
-  )
-  const permGroups = groupPermissionKeys(
-    mergeCatalogKeys(Object.keys(permSelected)),
   )
   const editGroups = groupPermissionKeys(
     mergeCatalogKeys(Object.keys(editSelected)),
@@ -342,51 +266,45 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 180,
+      width: 124,
       sortable: false,
       filterable: false,
       disableColumnMenu: true,
       renderCell: (params) => (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
           <button
             type="button"
-            className="icon-button"
+            className="secondary-button"
             style={iconBtn}
             title="View"
+            aria-label="View role"
             onClick={() => openView(params.row)}
           >
-            <i className="fa fa-eye" aria-hidden />
+            <i className="fa fa-eye" aria-hidden="true" />
           </button>
           {canManage && (
             <>
               <button
                 type="button"
-                className="icon-button"
+                className="secondary-button"
                 style={iconBtn}
                 title="Edit"
+                aria-label="Edit role"
                 onClick={() => void openEdit(params.row)}
               >
-                <i className="fa fa-pencil" aria-hidden />
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                style={iconBtn}
-                title="Permissions"
-                onClick={() => void openPermissions(params.row)}
-              >
-                <i className="fa fa-key" aria-hidden />
+                <i className="fa fa-pencil" aria-hidden="true" />
               </button>
               {!params.row.is_system && (
                 <button
                   type="button"
-                  className="icon-button"
-                  style={iconBtn}
+                  className="secondary-button"
+                  style={{ ...iconBtn, color: '#ef4444' }}
                   title="Delete"
+                  aria-label="Delete role"
                   onClick={() => void handleDelete(params.row)}
                   disabled={saving}
                 >
-                  <i className="fa fa-trash" aria-hidden />
+                  <i className="fa fa-trash" aria-hidden="true" />
                 </button>
               )}
             </>
@@ -573,8 +491,7 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
                 </p>
               )}
               <p className="roles-role-form-hint">
-                Update the display name and description. Permissions can be
-                adjusted below or from the key icon on the roles list.
+                Update the display name, description, and permissions below.
               </p>
               <label className="dashboard-dialog-field">
                 <span>
@@ -665,88 +582,6 @@ export const RolesCrudList: React.FC<RolesCrudListProps> = ({
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
             </div>
-          </form>
-        )}
-      </DashboardDialog>
-
-      <DashboardDialog
-        open={Boolean(permTarget)}
-        onClose={closePerm}
-        title={permTarget ? `Permissions — ${permTarget.name}` : 'Permissions'}
-        wide
-      >
-        {permTarget && (
-          <form onSubmit={(e) => void handleSavePermissions(e)}>
-            {permRoleDetail?.is_system && (
-              <p style={{ color: '#b45309', marginTop: 0, fontSize: '0.875rem' }}>
-                System role: changes may be limited by the API.
-              </p>
-            )}
-            {permSelected.all && (
-              <p style={{ marginTop: 0, fontSize: '0.875rem', color: 'var(--dashboard-muted, #64748b)' }}>
-                The <code>all</code> permission is stored once on the role and
-                grants every permission.
-              </p>
-            )}
-            <div
-              className="roles-permission-picker"
-              style={{
-                maxHeight: 360,
-                overflowY: 'auto',
-                border: '1px solid var(--dashboard-border, #e2e8f0)',
-                borderRadius: 8,
-                padding: '0.75rem',
-              }}
-            >
-              {[...permGroups.entries()].map(([prefix, keys]) => (
-                <div key={prefix} style={{ marginBottom: '0.75rem' }}>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: '0.8rem',
-                      textTransform: 'uppercase',
-                      color: 'var(--dashboard-muted, #64748b)',
-                      marginBottom: 6,
-                    }}
-                  >
-                    {prefix}
-                  </div>
-                  {keys.map((key) => (
-                    <div
-                      key={key}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        marginBottom: 4,
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      <Checkbox
-                        checked={isEffectivePermissionChecked(key, permSelected)}
-                        onCheckedChange={() => togglePerm(key)}
-                        ariaLabel={key}
-                      />
-                      <span style={{ fontFamily: 'monospace' }}>{key}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-            {canManage && (
-              <div className="dashboard-dialog-actions">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={closePerm}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="primary-button" disabled={saving}>
-                  {saving ? 'Saving…' : 'Save permissions'}
-                </button>
-              </div>
-            )}
           </form>
         )}
       </DashboardDialog>

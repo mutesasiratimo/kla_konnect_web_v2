@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GridColDef } from '@mui/x-data-grid'
 import { DashboardDataGrid } from '../../components/table/DashboardDataGrid'
 import {
@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { analytics } from '../../api/endpoints'
+import { analytics, roles as rolesApi } from '../../api/endpoints'
 import { alertError, alertSuccess } from '../../utils/alerts'
 
 const REPORT_TYPES = [
@@ -27,7 +27,16 @@ const REPORT_TYPES = [
 
 type ReportType = (typeof REPORT_TYPES)[number]
 
-const USER_TYPES = ['citizen', 'clerk', 'engineer', 'admin'] as const
+/** Backend export endpoint (under /analytics, suffixed with /export) per report type. */
+const EXPORT_PATHS: Record<ReportType, string> = {
+  'General Summary': 'incidents/overview',
+  'Incidents by Category': 'incidents/by-category',
+  'Incidents by Location': 'incidents/hotspots',
+  'Incidents over Time': 'incidents/time-series',
+  'Incident Resolution Time': 'incidents/resolution-time',
+  'Incident Categories Performance': 'categories/performance',
+  'Users Activity': 'users/activity',
+}
 
 const PIE_COLORS = ['#2196F3', '#4CAF50', '#FF9800', '#F44336', '#9C27B0', '#00BCD4']
 const BAR_GREEN = '#227032'
@@ -61,6 +70,16 @@ function num(v: unknown): number {
   return 0
 }
 
+/** Backend chart endpoints return `{ data: [{ label, value, ... }] }`. */
+function labelValueRows(raw: unknown): { label: string; value: number }[] {
+  const o = asRecord(raw)
+  const data = Array.isArray(o.data) ? o.data : []
+  return data.map((item) => {
+    const r = asRecord(item)
+    return { label: String(r.label ?? '—'), value: num(r.value) }
+  })
+}
+
 type ReportBundle =
   | {
       type: ReportType
@@ -73,17 +92,6 @@ type ReportBundle =
     }
   | null
 
-function exportJson(data: unknown, reportType: string) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: 'application/json',
-  })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `${reportType.replace(/\s+/g, '_')}_${toYMD(new Date())}.json`
-  a.click()
-  URL.revokeObjectURL(a.href)
-}
-
 function GeneralSummaryCharts({
   raw,
   extra,
@@ -92,20 +100,25 @@ function GeneralSummaryCharts({
   extra?: { labels: string[]; values: number[]; granularity: string }
 }) {
   const o = asRecord(raw)
-  const sb = asRecord(o.status_breakdown ?? o.statusBreakdown)
-  const published = num(sb.published)
-  const resolved = num(sb.resolved)
-  const archived = num(sb.archived)
-  const rejected = num(sb.rejected)
-  const total = num(sb.total) || published + resolved + archived + rejected
-  const emergency = num(o.emergency_incidents ?? o.emergencyIncidents)
-  const avgRes = num(o.avg_resolution_hours ?? o.avgResolutionHours)
+  // Backend shape: { summary: { total_incidents, by_status: {"0".."4"}, emergency_incidents, avg_resolution_hours } }
+  const summary = asRecord(o.summary ?? o)
+  const byStatus = asRecord(summary.by_status ?? o.status_breakdown ?? o.statusBreakdown)
+  const pending = num(byStatus['0'])
+  const live = num(byStatus['1'] ?? byStatus.published)
+  const resolved = num(byStatus['2'] ?? byStatus.resolved)
+  const rejected = num(byStatus['3'] ?? byStatus.rejected)
+  const archived = num(byStatus['4'] ?? byStatus.archived)
+  const total =
+    num(summary.total_incidents) || pending + live + resolved + rejected + archived
+  const emergency = num(summary.emergency_incidents ?? summary.emergencyIncidents)
+  const avgRes = num(summary.avg_resolution_hours ?? summary.avgResolutionHours)
 
   const pieData = [
-    { name: 'Published', value: published, color: PIE_COLORS[0] },
+    { name: 'Pending', value: pending, color: PIE_COLORS[2] },
+    { name: 'Live', value: live, color: PIE_COLORS[0] },
     { name: 'Resolved', value: resolved, color: PIE_COLORS[1] },
-    { name: 'Archived', value: archived, color: PIE_COLORS[2] },
     { name: 'Rejected', value: rejected, color: PIE_COLORS[3] },
+    { name: 'Archived', value: archived, color: PIE_COLORS[4] },
   ].filter((d) => d.value > 0)
 
   const barData =
@@ -199,22 +212,17 @@ function GeneralSummaryCharts({
 
 function CategoryReportCharts({ raw }: { raw: unknown }) {
   const o = asRecord(raw)
-  const categories = Array.isArray(o.categories) ? o.categories : []
-  const totalIncidents = num(o.total_incidents ?? o.totalIncidents)
-  const totalCategories = num(o.total_categories ?? o.totalCategories)
+  // Backend shape: { data: [{ category_id, label, value }], total_categories }
+  const baseRows = labelValueRows(raw)
+  const totalIncidents = baseRows.reduce((sum, r) => sum + r.value, 0)
+  const totalCategories = num(o.total_categories ?? o.totalCategories) || baseRows.length
 
-  const rows = categories.map((c, i) => {
-    const r = asRecord(c)
-    return {
-      id: String(i),
-      name: String(r.category_name ?? r.categoryName ?? '—'),
-      total: num(r.total_count ?? r.totalCount),
-      published: num(r.published),
-      resolved: num(r.resolved),
-      emergency: num(r.emergency),
-      pct: num(r.percentage),
-    }
-  })
+  const rows = baseRows.map((r, i) => ({
+    id: String(i),
+    name: r.label,
+    total: r.value,
+    pct: totalIncidents > 0 ? (r.value / totalIncidents) * 100 : 0,
+  }))
 
   type CategoryDetailRow = (typeof rows)[number]
 
@@ -224,33 +232,17 @@ function CategoryReportCharts({ raw }: { raw: unknown }) {
       field: 'total',
       headerName: 'Total',
       type: 'number',
-      width: 100,
-      align: 'right',
-      headerAlign: 'right',
-    },
-    {
-      field: 'published',
-      headerName: 'Published',
-      type: 'number',
       width: 110,
       align: 'right',
       headerAlign: 'right',
     },
     {
-      field: 'resolved',
-      headerName: 'Resolved',
-      type: 'number',
+      field: 'pct',
+      headerName: 'Share',
       width: 110,
       align: 'right',
       headerAlign: 'right',
-    },
-    {
-      field: 'emergency',
-      headerName: 'Emergency',
-      type: 'number',
-      width: 110,
-      align: 'right',
-      headerAlign: 'right',
+      valueGetter: (_v, row) => `${row.pct.toFixed(1)}%`,
     },
   ]
 
@@ -351,10 +343,14 @@ function CategoryReportCharts({ raw }: { raw: unknown }) {
 
 function TimeSeriesOnly({ raw, title }: { raw: unknown; title: string }) {
   const o = asRecord(raw)
-  const labels = Array.isArray(o.labels) ? o.labels.map(String) : []
-  const series = Array.isArray(o.series) ? o.series.map((v) => num(v)) : []
-  const barData = labels.map((label, i) => ({ label, value: series[i] ?? 0 }))
-  const maxBar = series.reduce((m, v) => Math.max(m, v), 0) || 1
+  // Backend shape: { data: [{ label, value }], meta: { granularity } } (legacy: labels/series)
+  let barData = labelValueRows(raw)
+  if (barData.length === 0 && Array.isArray(o.labels)) {
+    const labels = o.labels.map(String)
+    const series = Array.isArray(o.series) ? o.series.map((v) => num(v)) : []
+    barData = labels.map((label, i) => ({ label, value: series[i] ?? 0 }))
+  }
+  const maxBar = barData.reduce((m, r) => Math.max(m, r.value), 0) || 1
 
   return (
     <div className="reports-analytics-view-inner">
@@ -373,31 +369,39 @@ function TimeSeriesOnly({ raw, title }: { raw: unknown; title: string }) {
   )
 }
 
+const RESOLUTION_BUCKET_LABELS: Record<string, string> = {
+  under_1h: '< 1 hour',
+  '1h_to_24h': '1–24 hours',
+  '1d_to_7d': '1–7 days',
+  over_7d: '> 7 days',
+}
+
 function ResolutionTimeCharts({ raw }: { raw: unknown }) {
   const o = asRecord(raw)
-  let labels: string[] = []
-  let values: number[] = []
+  // Backend shape: { summary: { resolved_count, avg_resolution_hours }, data: distribution[{label,value}] }
+  const summary = asRecord(o.summary)
+  const resolvedCount = num(summary.resolved_count)
+  const avgHours = num(summary.avg_resolution_hours)
 
-  if (Array.isArray(o.data) && o.data.length > 0) {
-    for (const item of o.data) {
-      const r = asRecord(item)
-      labels.push(String(r.category_name ?? r.label ?? '—'))
-      values.push(num(r.avg_resolution_hours ?? r.value))
-    }
-  } else {
-    labels = Array.isArray(o.labels) ? o.labels.map(String) : []
-    values = Array.isArray(o.series) ? o.series.map((v) => num(v)) : []
-  }
-
-  const barData = labels.map((label, i) => ({
-    label: label.length > 10 ? `${label.slice(0, 10)}…` : label,
-    value: values[i] ?? 0,
+  const barData = labelValueRows(raw).map((r) => ({
+    label: RESOLUTION_BUCKET_LABELS[r.label] ?? r.label,
+    value: r.value,
   }))
-  const maxBar = values.reduce((m, v) => Math.max(m, v), 0) || 1
+  const maxBar = barData.reduce((m, r) => Math.max(m, r.value), 0) || 1
 
   return (
     <div className="reports-analytics-view-inner">
-      <h3 className="reports-section-title">Incident resolution time (hours)</h3>
+      <div className="reports-metric-row reports-metric-row--2">
+        <div className="reports-metric-card">
+          <div className="reports-metric-value">{resolvedCount}</div>
+          <div className="reports-metric-label">Resolved incidents</div>
+        </div>
+        <div className="reports-metric-card">
+          <div className="reports-metric-value">{avgHours.toFixed(1)}</div>
+          <div className="reports-metric-label">Avg resolution (hrs)</div>
+        </div>
+      </div>
+      <h3 className="reports-section-title">Resolution time distribution</h3>
       <div className="reports-chart-bar">
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={barData} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
@@ -414,15 +418,16 @@ function ResolutionTimeCharts({ raw }: { raw: unknown }) {
 
 function PerformanceCharts({ raw }: { raw: unknown }) {
   const o = asRecord(raw)
-  const categories = Array.isArray(o.categories) ? o.categories : []
-  const rows = categories.map((c) => {
+  // Backend shape: { data: [{ category_id, label, total, resolved, resolution_rate, avg_resolution_hours }] }
+  const data = Array.isArray(o.data) ? o.data : []
+  const rows = data.map((c) => {
     const r = asRecord(c)
     return {
-      name: String(r.category_name ?? r.categoryName ?? '—'),
-      total: num(r.total_incidents ?? r.totalIncidents),
+      name: String(r.label ?? r.category_name ?? '—'),
+      total: num(r.total),
       resolved: num(r.resolved),
-      rate: num(r.resolution_rate_pct ?? r.resolutionRatePct),
-      combined: num(r.resolved) + num(r.published),
+      rate: num(r.resolution_rate) * 100,
+      combined: num(r.total),
     }
   })
   const maxRate = Math.max(5, ...rows.map((r) => r.rate), 100)
@@ -476,17 +481,15 @@ function PerformanceCharts({ raw }: { raw: unknown }) {
 
 function LocationReportCharts({ raw }: { raw: unknown }) {
   const o = asRecord(raw)
-  const hotspots = Array.isArray(o.hotspots) ? o.hotspots : []
-  const totalHotspots = num(o.total_hotspots ?? o.totalHotspots)
-  const params = asRecord(o.parameters ?? {})
-  const radius = num(params.radius_meters ?? params.radiusMeters)
+  // Backend shape: { data: [{ label, value, address }], meta: { top_n } }
+  const data = Array.isArray(o.data) ? o.data : []
+  const totalIncidents = data.reduce((sum, h) => sum + num(asRecord(h).value), 0)
 
-  const rows = hotspots.map((h) => {
+  const rows = data.map((h) => {
     const r = asRecord(h)
     return {
-      name: String(r.location_name ?? r.locationName ?? 'N/A'),
-      count: num(r.incident_count ?? r.incidentCount),
-      topCat: String(r.top_category_name ?? r.topCategoryName ?? '—'),
+      name: String(r.address ?? r.label ?? 'N/A'),
+      count: num(r.value ?? r.incident_count),
     }
   })
   const maxCount = rows.reduce((m, r) => Math.max(m, r.count), 0) || 1
@@ -495,15 +498,13 @@ function LocationReportCharts({ raw }: { raw: unknown }) {
     <div className="reports-analytics-view-inner">
       <div className="reports-metric-row reports-metric-row--2">
         <div className="reports-metric-card">
-          <div className="reports-metric-value">{totalHotspots || rows.length}</div>
+          <div className="reports-metric-value">{rows.length}</div>
           <div className="reports-metric-label">Hotspots</div>
         </div>
-        {radius > 0 && (
-          <div className="reports-metric-card">
-            <div className="reports-metric-value">{radius}m</div>
-            <div className="reports-metric-label">Radius</div>
-          </div>
-        )}
+        <div className="reports-metric-card">
+          <div className="reports-metric-value">{totalIncidents}</div>
+          <div className="reports-metric-label">Incidents at hotspots</div>
+        </div>
       </div>
       <h3 className="reports-section-title">Incidents by location</h3>
       <div className="reports-chart-bar">
@@ -532,7 +533,7 @@ function LocationReportCharts({ raw }: { raw: unknown }) {
             <div>
               <div className="reports-card-list-title">{r.name}</div>
               <div className="reports-card-list-sub">
-                Incidents: {r.count} · {r.topCat}
+                Incidents: {r.count}
               </div>
             </div>
           </li>
@@ -679,8 +680,24 @@ function ReportAnalyticsView({ bundle }: { bundle: ReportBundle }) {
 
 export function ReportsPage() {
   const [reportType, setReportType] = useState<ReportType>('General Summary')
-  const [userType, setUserType] = useState<string>('citizen')
+  const [userType, setUserType] = useState<string>('')
+  const [roleOptions, setRoleOptions] = useState<{ id: string; name: string }[]>([])
   const [datePreset, setDatePreset] = useState<string | null>('last30')
+
+  useEffect(() => {
+    let cancelled = false
+    rolesApi
+      .list()
+      .then((items) => {
+        if (!cancelled) {
+          setRoleOptions(items.map((r) => ({ id: r.id, name: r.name })))
+        }
+      })
+      .catch((err) => console.error(err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const [startDateStr, setStartDateStr] = useState(() => {
     const s = new Date()
@@ -742,18 +759,15 @@ export function ReportsPage() {
             end_date: endDateStr,
           })
           const g = timeSeriesGranularityForRange(startDateStr, endDateStr)
-          const ts = asRecord(
-            await analytics.incidentsTimeSeries({
-              start_date: startDateStr,
-              end_date: endDateStr,
-              granularity: g,
-              include_city_reports: false,
-            }),
-          )
-          const labels = Array.isArray(ts.labels) ? ts.labels.map(String) : []
-          const values = Array.isArray(ts.series)
-            ? ts.series.map((v) => num(v))
-            : []
+          const ts = await analytics.incidentsTimeSeries({
+            start_date: startDateStr,
+            end_date: endDateStr,
+            granularity: g,
+            include_city_reports: false,
+          })
+          const tsRows = labelValueRows(ts)
+          const labels = tsRows.map((r) => r.label)
+          const values = tsRows.map((r) => r.value)
           setBundle({
             type: 'General Summary',
             raw: overview,
@@ -812,7 +826,7 @@ export function ReportsPage() {
           const raw = await analytics.usersActivity({
             start_date: startDateStr,
             end_date: endDateStr,
-            user_type: userType,
+            user_type: userType || undefined,
           })
           setBundle({ type: 'Users Activity', raw })
           break
@@ -832,29 +846,48 @@ export function ReportsPage() {
   }, [endDateStr, reportType, startDateStr, userType])
 
   const handleExport = useCallback(async () => {
-    if (!bundle) {
-      void alertError('Export', 'Generate a report first before exporting.')
+    if (!startDateStr || !endDateStr) {
+      void alertError('Date range', 'Please select both start and end dates.')
       return
     }
     setExportLoading(true)
     try {
-      const data =
-        bundle.type === 'General Summary' && bundle.extra
-          ? {
-              overview: bundle.raw,
-              time_series: {
-                labels: bundle.extra.labels,
-                series: bundle.extra.values,
-                granularity: bundle.extra.granularity,
-              },
-            }
-          : bundle.raw
-      exportJson(data, bundle.type)
-      void alertSuccess('Export', 'Report downloaded as JSON.')
+      const params: Record<string, string> = {
+        start_date: startDateStr,
+        end_date: endDateStr,
+        format: 'xlsx',
+      }
+      if (
+        reportType === 'Incidents by Category' ||
+        reportType === 'Incidents by Location' ||
+        reportType === 'Incidents over Time'
+      ) {
+        params.include_city_reports = 'false'
+      }
+      if (reportType === 'Incidents over Time') {
+        params.granularity = timeSeriesGranularityForRange(startDateStr, endDateStr)
+      }
+      if (reportType === 'Users Activity' && userType) {
+        params.user_type = userType
+      }
+      const { blob, filename } = await analytics.exportReport(
+        EXPORT_PATHS[reportType],
+        params,
+      )
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download =
+        filename ?? `${reportType.replace(/\s+/g, '_')}_${toYMD(new Date())}.xlsx`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      void alertSuccess('Export', 'Report downloaded as an Excel file.')
+    } catch (e) {
+      console.error(e)
+      void alertError('Export', 'Could not export this report. Please try again.')
     } finally {
       setExportLoading(false)
     }
-  }, [bundle])
+  }, [endDateStr, reportType, startDateStr, userType])
 
   const chips = useMemo(
     () =>
@@ -912,7 +945,7 @@ export function ReportsPage() {
             <button
               type="button"
               className="primary-button reports-action-btn"
-              disabled={exportLoading || !bundle}
+              disabled={exportLoading}
               onClick={() => void handleExport()}
             >
               {exportLoading ? 'Exporting…' : 'Export'}
@@ -938,9 +971,10 @@ export function ReportsPage() {
                 value={userType}
                 onChange={(e) => setUserType(e.target.value)}
               >
-                {USER_TYPES.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
+                <option value="">All users</option>
+                {roleOptions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
                   </option>
                 ))}
               </select>

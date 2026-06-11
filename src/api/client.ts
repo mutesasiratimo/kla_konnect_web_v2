@@ -203,6 +203,50 @@ export async function apiRequest<T>(
   return res.json() as Promise<T>
 }
 
+/** GET a file attachment (e.g. CSV export) with auth; returns the blob and server-suggested filename. */
+export async function apiDownload(
+  path: string,
+  params?: Record<string, string>,
+  isRetry = false,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const base = getBaseUrl().replace(/\/$/, '')
+  const url = new URL(path.startsWith('/') ? path : `/${path}`, base)
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
+  }
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(url.toString(), { headers })
+
+  if (res.status === 401 && !isRetry) {
+    try {
+      const tokens = await refreshAccessToken()
+      updateSessionTokens(tokens)
+      return apiDownload(path, params, true)
+    } catch {
+      clearToken()
+      throw new ApiError(401, await res.text())
+    }
+  }
+
+  if (!res.ok) {
+    const text = await res.text()
+    let detail: unknown = text
+    try {
+      detail = JSON.parse(text)
+    } catch {
+      // use text
+    }
+    throw new ApiError(res.status, detail)
+  }
+
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  return { blob: await res.blob(), filename: match?.[1] ?? null }
+}
+
 /** POST multipart /uploads/file — do not set Content-Type (browser sets boundary). */
 export async function uploadFile(
   file: File,

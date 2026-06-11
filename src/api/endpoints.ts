@@ -1,4 +1,4 @@
-import { apiRequest, clearToken, setSession, uploadFile } from './client'
+import { apiDownload, apiRequest, clearToken, setSession, uploadFile } from './client'
 import { coercePermissionStringList } from '../utils/rolePermissions'
 import type {
   StageCreate,
@@ -637,15 +637,24 @@ export const analytics = {
   usersActivity(params: {
     start_date: string
     end_date: string
-    user_type: string
+    user_type?: string
   }): Promise<unknown> {
+    const query: Record<string, string> = {
+      start_date: params.start_date,
+      end_date: params.end_date,
+    }
+    if (params.user_type) query.user_type = params.user_type
     return apiRequest<unknown>(`${base}/analytics/users/activity`, {
-      params: {
-        start_date: params.start_date,
-        end_date: params.end_date,
-        user_type: params.user_type,
-      },
+      params: query,
     })
+  },
+
+  /** Download a report export (path relative to /analytics). format: 'csv' | 'xlsx'. */
+  exportReport(
+    reportPath: string,
+    params: Record<string, string>,
+  ): Promise<{ blob: Blob; filename: string | null }> {
+    return apiDownload(`${base}/analytics/${reportPath}/export`, params)
   },
 }
 

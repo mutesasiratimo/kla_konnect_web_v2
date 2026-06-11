@@ -20,6 +20,7 @@ interface ListProps {
   onRefresh: () => void
   showCreateButton?: boolean
   createAsCityAlert?: boolean
+  showFilters?: boolean
 }
 
 type CityAlertTab = 'active' | 'upcoming' | 'archived'
@@ -64,6 +65,7 @@ export const IncidentList: React.FC<ListProps> = ({
   onRefresh,
   showCreateButton = true,
   createAsCityAlert = false,
+  showFilters = false,
 }) => {
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -106,6 +108,30 @@ export const IncidentList: React.FC<ListProps> = ({
   const [updatingViewMeta, setUpdatingViewMeta] = useState(false)
   const [saving, setSaving] = useState(false)
   const [cityAlertTab, setCityAlertTab] = useState<CityAlertTab>('active')
+  const [filterText, setFilterText] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'' | IncidentWorkflowStatus>('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+
+  const hasActiveFilters = Boolean(
+    filterText.trim() ||
+      statusFilter ||
+      categoryFilter ||
+      assigneeFilter ||
+      filterDateFrom ||
+      filterDateTo,
+  )
+
+  const clearFilters = () => {
+    setFilterText('')
+    setStatusFilter('')
+    setCategoryFilter('')
+    setAssigneeFilter('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+  }
 
   const cityAlertBuckets = useMemo(() => {
     const now = Date.now()
@@ -137,6 +163,59 @@ export const IncidentList: React.FC<ListProps> = ({
   }, [data])
 
   const visibleRows = createAsCityAlert ? cityAlertBuckets[cityAlertTab] : data
+
+  const filteredRows = useMemo(() => {
+    if (!showFilters || !hasActiveFilters) return visibleRows
+    const q = filterText.trim().toLowerCase()
+    const fromMs = filterDateFrom
+      ? new Date(`${filterDateFrom}T00:00:00`).getTime()
+      : null
+    const toMs = filterDateTo
+      ? new Date(`${filterDateTo}T23:59:59.999`).getTime()
+      : null
+
+    return visibleRows.filter((row) => {
+      if (statusFilter && row.status !== statusFilter) return false
+      if (categoryFilter && row.incident_category_id !== categoryFilter) return false
+      if (assigneeFilter === 'unassigned') {
+        if (row.assigned_role_id) return false
+      } else if (assigneeFilter && row.assigned_role_id !== assigneeFilter) {
+        return false
+      }
+      if (fromMs != null || toMs != null) {
+        const createdMs = new Date(row.datecreated).getTime()
+        if (!Number.isFinite(createdMs)) return false
+        if (fromMs != null && createdMs < fromMs) return false
+        if (toMs != null && createdMs > toMs) return false
+      }
+      if (q) {
+        const reporter = row.reported_by
+        const blob = [
+          row.id,
+          row.name,
+          reporter?.full_name,
+          reporter?.firstname,
+          reporter?.lastothernames,
+          reporter?.email,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        if (!blob.includes(q)) return false
+      }
+      return true
+    })
+  }, [
+    showFilters,
+    hasActiveFilters,
+    visibleRows,
+    filterText,
+    statusFilter,
+    categoryFilter,
+    assigneeFilter,
+    filterDateFrom,
+    filterDateTo,
+  ])
 
   const closeCreate = () => {
     setCreateOpen(false)
@@ -1099,9 +1178,113 @@ export const IncidentList: React.FC<ListProps> = ({
         </div>
       </DashboardDialog>
 
+      {showFilters && (
+        <div className="dashboard-filters" style={{ marginBottom: '1rem' }}>
+          <div className="dashboard-filter">
+            <label className="dashboard-filter-label">
+              Search
+              <input
+                type="search"
+                className="dashboard-filter-input"
+                placeholder="Reference, title, reporter…"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+          </div>
+          <div className="dashboard-filter">
+            <label className="dashboard-filter-label">
+              Status
+              <select
+                className="dashboard-filter-select"
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as '' | IncidentWorkflowStatus)
+                }
+              >
+                <option value="">All statuses</option>
+                <option value="0">Pending</option>
+                <option value="1">Live</option>
+                <option value="2">Resolved</option>
+                <option value="3">Archived</option>
+              </select>
+            </label>
+          </div>
+          <div className="dashboard-filter">
+            <label className="dashboard-filter-label">
+              Category
+              <select
+                className="dashboard-filter-select"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="">All categories</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="dashboard-filter">
+            <label className="dashboard-filter-label">
+              Designation
+              <select
+                className="dashboard-filter-select"
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+              >
+                <option value="">All designations</option>
+                <option value="unassigned">Unassigned</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="dashboard-filter">
+            <label className="dashboard-filter-label">
+              From
+              <input
+                type="date"
+                className="dashboard-filter-input"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="dashboard-filter">
+            <label className="dashboard-filter-label">
+              To
+              <input
+                type="date"
+                className="dashboard-filter-input"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+              />
+            </label>
+          </div>
+          {hasActiveFilters && (
+            <div className="dashboard-filter">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={clearFilters}
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="dashboard-table-shell">
         <DashboardDataGrid<IncidentRead>
-          rows={visibleRows}
+          rows={filteredRows}
           columns={columns}
           getRowId={(row) => row.id}
           localeText={{
@@ -1111,9 +1294,11 @@ export const IncidentList: React.FC<ListProps> = ({
                 : cityAlertTab === 'upcoming'
                   ? 'No upcoming city alerts.'
                   : 'No archived or expired city alerts yet.'
-              : showCreateButton
-                ? 'No records yet. Create one to get started.'
-                : 'No incidents found for the selected filters.',
+              : hasActiveFilters
+                ? 'No incidents match the selected filters.'
+                : showCreateButton
+                  ? 'No records yet. Create one to get started.'
+                  : 'No incidents loaded yet.',
           }}
         />
       </div>

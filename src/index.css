@@ -71,13 +71,15 @@ button {
   --components-checkbox-colors-helper-text-error: #dc2626;
 }
 
-.app-checkbox-group {
+/* The library merges our className onto the same node as
+   .react-beauty-el-checkbox-container (width: 100%), so this needs the
+   compound selector to win the cascade. */
+.app-checkbox-group,
+.app-checkbox-group.react-beauty-el-checkbox-container,
+.app-checkbox-group .react-beauty-el-checkbox-container {
   display: inline-flex;
   width: auto;
-}
-
-.app-checkbox-group .react-beauty-el-checkbox-container {
-  width: auto;
+  flex: 0 0 auto;
 }
 
 .react-beauty-el-checkbox-group-container {

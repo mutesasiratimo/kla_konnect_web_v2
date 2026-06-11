@@ -165,6 +165,7 @@ export function IncidentsSection({
             categoryOptions={catData.map((c) => ({ id: c.id, name: c.name }))}
             onRefresh={loadIncidents}
             showCreateButton={false}
+            showFilters
           />
         </div>
       )}
